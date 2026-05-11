@@ -11,16 +11,11 @@ class NutritionApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dinh Dưỡng Cá Nhân',
+      title: 'Nutrition Tracker',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF4CAF50),
-          primary: const Color(0xFF4CAF50),
-          secondary: const Color(0xFFFF7043),
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         useMaterial3: true,
-        fontFamily: 'Roboto',
       ),
       home: const SplashScreen(),
 

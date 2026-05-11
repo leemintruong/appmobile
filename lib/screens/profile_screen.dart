@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 import 'login_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   final Map<String, dynamic>? profile;
+
   const ProfileScreen({super.key, this.profile});
 
   String _getActivityLabel() {
@@ -19,7 +21,7 @@ class ProfileScreen extends StatelessWidget {
       case 'very_active':
         return 'Rất nhiều';
       default:
-        return 'Vừa phải';
+        return '--';
     }
   }
 
@@ -34,17 +36,30 @@ class ProfileScreen extends StatelessWidget {
       case 'build_muscle':
         return 'Tăng cơ';
       default:
-        return 'Giảm cân';
+        return '--';
     }
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    await ApiService.logout();
+
+    if (!context.mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final name = profile?['name'] ?? 'Nguyễn Thị Lan';
-    final email = profile?['email'] ?? 'lan@gmail.com';
-    final age = profile?['age'] ?? 25;
-    final height = profile?['height'] ?? 165;
-    final weight = profile?['weight'] ?? 62;
+    final name = profile?['name'] ?? 'Người dùng';
+    final email = profile?['email'] ?? '';
+    final age = profile?['age'] ?? '--';
+    final height = profile?['height'] ?? '--';
+    final weight = profile?['weight'] ?? '--';
+    final dailyCalorieGoal = profile?['daily_calorie_goal'] ?? '--';
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -52,11 +67,14 @@ class ProfileScreen extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 12),
+
             CircleAvatar(
               radius: 44,
               backgroundColor: AppColors.primary,
               child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                name.toString().isNotEmpty
+                    ? name.toString()[0].toUpperCase()
+                    : 'U',
                 style: const TextStyle(
                   fontSize: 36,
                   color: Colors.white,
@@ -64,10 +82,11 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ),
+
             const SizedBox(height: 12),
 
             Text(
-              name,
+              name.toString(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
@@ -81,7 +100,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 4),
 
             Text(
-              email,
+              email.toString(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
@@ -104,23 +123,30 @@ class ProfileScreen extends StatelessWidget {
               _infoRow(
                 Icons.local_fire_department_outlined,
                 'Calo/ngày',
-                '${profile?['daily_calorie_goal'] ?? 1500} kcal',
+                '$dailyCalorieGoal kcal',
               ),
             ]),
 
             const SizedBox(height: 12),
 
+            _menuItem(Icons.flag_outlined, 'Thay đổi mục tiêu', () {}),
+
+            const SizedBox(height: 8),
+
             _menuItem(Icons.notifications_outlined, 'Cài đặt thông báo', () {}),
+
             const SizedBox(height: 8),
+
             _menuItem(Icons.help_outline, 'Trợ giúp', () {}),
+
             const SizedBox(height: 8),
-            _menuItem(Icons.logout, 'Đăng xuất', () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (_) => false,
-              );
-            }, color: AppColors.fat),
+
+            _menuItem(
+              Icons.logout,
+              'Đăng xuất',
+              () => _handleLogout(context),
+              color: AppColors.fat,
+            ),
           ],
         ),
       ),
@@ -144,6 +170,7 @@ class ProfileScreen extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, color: AppColors.primary, size: 20),
+
           const SizedBox(width: 12),
 
           Expanded(
@@ -195,6 +222,7 @@ class ProfileScreen extends StatelessWidget {
         child: Row(
           children: [
             Icon(icon, color: color ?? AppColors.textGrey, size: 20),
+
             const SizedBox(width: 12),
 
             Expanded(

@@ -36,9 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final result = await ApiService.login(email, password);
@@ -52,7 +50,11 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Đăng nhập thất bại')),
+          SnackBar(
+            content: Text(
+              result['message'] ?? 'Email hoặc mật khẩu không đúng',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -63,9 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ).showSnackBar(SnackBar(content: Text('Không kết nối được backend: $e')));
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -81,6 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 40),
+
               Center(
                 child: Container(
                   width: 72,
@@ -96,7 +97,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 32),
+
               const Text(
                 'Chào mừng trở lại!',
                 style: TextStyle(
@@ -105,19 +108,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: AppColors.textDark,
                 ),
               ),
+
               const SizedBox(height: 6),
+
               const Text(
                 'Đăng nhập để tiếp tục',
                 style: TextStyle(fontSize: 14, color: AppColors.textGrey),
               ),
+
               const SizedBox(height: 32),
+
               _buildTextField(
                 _emailCtrl,
                 'Email',
                 Icons.email_outlined,
                 keyboardType: TextInputType.emailAddress,
               ),
+
               const SizedBox(height: 16),
+
               TextField(
                 controller: _passCtrl,
                 obscureText: _obscure,
@@ -141,7 +150,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   fillColor: Colors.white,
                 ),
               ),
+
               const SizedBox(height: 24),
+
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -172,7 +183,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                 ),
               ),
+
               const SizedBox(height: 16),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

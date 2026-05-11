@@ -3,10 +3,12 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Khi chạy emulator Android, dùng 10.0.2.2 thay cho localhost
+  // Android emulator dùng 10.0.2.2 để trỏ về localhost của máy tính.
+  // Nếu chạy Flutter Web/Chrome thì đổi thành: http://localhost:3000/api
   static const String baseUrl = 'http://10.0.2.2:3000/api';
 
   // ─── TOKEN ────────────────────────────────────────────────
+
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
@@ -25,86 +27,114 @@ class ApiService {
 
   static Future<Map<String, String>> _headers() async {
     final token = await getToken();
+
     return {
       'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
   }
 
+  static dynamic _decodeResponse(http.Response res) {
+    try {
+      final decoded = jsonDecode(res.body);
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return decoded;
+      }
+
+      if (decoded is Map<String, dynamic>) {
+        return {'success': false, 'statusCode': res.statusCode, ...decoded};
+      }
+
+      return {
+        'success': false,
+        'statusCode': res.statusCode,
+        'message': 'Request thất bại',
+        'data': decoded,
+      };
+    } catch (_) {
+      return {
+        'success': false,
+        'statusCode': res.statusCode,
+        'message': res.body.isNotEmpty ? res.body : 'Không đọc được phản hồi',
+      };
+    }
+  }
+
   // ─── AUTH ─────────────────────────────────────────────────
+
   static Future<Map<String, dynamic>> register(
     String name,
     String email,
     String password,
   ) async {
-    try {
-      print('📝 Registering: $email');
-      print('📡 API URL: $baseUrl/auth/register');
-      
-      final res = await http.post(
-        Uri.parse('$baseUrl/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'name': name, 'email': email, 'password': password}),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('Timeout after 10s'),
-      );
-      
-      print('📶 Status: ${res.statusCode}');
-      print('📝 Response: ${res.body}');
-      
-      return jsonDecode(res.body);
-    } catch (e) {
-      print('❌ Register error: $e');
-      rethrow;
+    final res = await http.post(
+      Uri.parse('$baseUrl/auth/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name, 'email': email, 'password': password}),
+    );
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
     }
+
+    return {'success': false, 'message': 'Phản hồi đăng ký không hợp lệ'};
   }
 
   static Future<Map<String, dynamic>> login(
     String email,
     String password,
   ) async {
-    try {
-      print('🔐 Logging in: $email');
-      print('📡 API URL: $baseUrl/auth/login');
+    print('CALL LOGIN API: $baseUrl/auth/login');
 
-      final res = await http
-          .post(
-            Uri.parse('$baseUrl/auth/login'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'email': email, 'password': password}),
-          )
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => throw Exception('Timeout after 10s'),
-          );
+    final res = await http.post(
+      Uri.parse('$baseUrl/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
 
-      print('📶 Status: ${res.statusCode}');
-      print('📝 Response: ${res.body}');
+    print('LOGIN STATUS: ${res.statusCode}');
+    print('LOGIN BODY: ${res.body}');
 
-      final data = jsonDecode(res.body);
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token']);
+
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('user', jsonEncode(data['user']));
-        print('✅ Login successful');
+        if (data['user'] != null) {
+          await prefs.setString('user', jsonEncode(data['user']));
+        }
       }
+
       return data;
-    } catch (e) {
-      print('❌ Login error: $e');
-      rethrow;
     }
+
+    return {'success': false, 'message': 'Phản hồi đăng nhập không hợp lệ'};
   }
 
-  static Future<void> logout() async => clearToken();
+  static Future<void> logout() async {
+    await clearToken();
+  }
 
   // ─── PROFILE ──────────────────────────────────────────────
+
   static Future<Map<String, dynamic>> getProfile() async {
     final res = await http.get(
       Uri.parse('$baseUrl/profile'),
       headers: await _headers(),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không lấy được hồ sơ'};
   }
 
   static Future<Map<String, dynamic>> updateProfile(
@@ -115,7 +145,14 @@ class ApiService {
       headers: await _headers(),
       body: jsonEncode(data),
     );
-    return jsonDecode(res.body);
+
+    final decoded = _decodeResponse(res);
+
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    return {'success': false, 'message': 'Không cập nhật được hồ sơ'};
   }
 
   static Future<Map<String, dynamic>> setGoal(
@@ -130,10 +167,18 @@ class ApiService {
         if (targetWeight != null) 'target_weight': targetWeight,
       }),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không cập nhật được mục tiêu'};
   }
 
   // ─── FOODS ────────────────────────────────────────────────
+
   static Future<List<dynamic>> searchFoods({
     String search = '',
     String category = '',
@@ -145,9 +190,24 @@ class ApiService {
       'page': '$page',
       'limit': '20',
     };
+
     final uri = Uri.parse('$baseUrl/foods').replace(queryParameters: params);
+
     final res = await http.get(uri, headers: await _headers());
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is List) {
+      return data;
+    }
+
+    if (data is Map<String, dynamic>) {
+      if (data['data'] is List) return data['data'];
+      if (data['foods'] is List) return data['foods'];
+      if (data['items'] is List) return data['items'];
+    }
+
+    return [];
   }
 
   static Future<Map<String, dynamic>> getFoodById(int id) async {
@@ -155,17 +215,33 @@ class ApiService {
       Uri.parse('$baseUrl/foods/$id'),
       headers: await _headers(),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không lấy được món ăn'};
   }
 
   // ─── MEALS ────────────────────────────────────────────────
+
   static Future<Map<String, dynamic>> getMeals({String? date}) async {
     final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
+
     final res = await http.get(
       Uri.parse('$baseUrl/meals?date=$d'),
       headers: await _headers(),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không lấy được nhật ký bữa ăn'};
   }
 
   static Future<Map<String, dynamic>> addMeal({
@@ -178,11 +254,18 @@ class ApiService {
       headers: await _headers(),
       body: jsonEncode({
         'meal_type': mealType,
-        'items': items, // [{ food_id, quantity }]
+        'items': items,
         if (date != null) 'date': date,
       }),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không thêm được bữa ăn'};
   }
 
   static Future<Map<String, dynamic>> deleteMeal(int mealLogId) async {
@@ -190,17 +273,41 @@ class ApiService {
       Uri.parse('$baseUrl/meals/$mealLogId'),
       headers: await _headers(),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không xóa được bữa ăn'};
   }
 
   // ─── WEIGHTS ──────────────────────────────────────────────
+
   static Future<List<dynamic>> getWeights({String? from, String? to}) async {
     final params = <String, String>{};
+
     if (from != null) params['from'] = from;
     if (to != null) params['to'] = to;
+
     final uri = Uri.parse('$baseUrl/weights').replace(queryParameters: params);
+
     final res = await http.get(uri, headers: await _headers());
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is List) {
+      return data;
+    }
+
+    if (data is Map<String, dynamic>) {
+      if (data['data'] is List) return data['data'];
+      if (data['weights'] is List) return data['weights'];
+      if (data['items'] is List) return data['items'];
+    }
+
+    return [];
   }
 
   static Future<Map<String, dynamic>> addWeight(
@@ -217,24 +324,48 @@ class ApiService {
         if (note != null) 'note': note,
       }),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không thêm được cân nặng'};
   }
 
-  static Future<void> deleteWeight(int id) async {
-    await http.delete(
+  static Future<Map<String, dynamic>> deleteWeight(int id) async {
+    final res = await http.delete(
       Uri.parse('$baseUrl/weights/$id'),
       headers: await _headers(),
     );
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không xóa được cân nặng'};
   }
 
   // ─── REPORTS ──────────────────────────────────────────────
+
   static Future<Map<String, dynamic>> getDailyReport({String? date}) async {
     final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
+
     final res = await http.get(
       Uri.parse('$baseUrl/reports/daily?date=$d'),
       headers: await _headers(),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không lấy được báo cáo ngày'};
   }
 
   static Future<Map<String, dynamic>> getWeeklyReport({String? start}) async {
@@ -244,19 +375,35 @@ class ApiService {
             .subtract(const Duration(days: 6))
             .toIso8601String()
             .substring(0, 10);
+
     final res = await http.get(
       Uri.parse('$baseUrl/reports/weekly?start=$s'),
       headers: await _headers(),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không lấy được báo cáo tuần'};
   }
 
   static Future<Map<String, dynamic>> getMonthlyReport({String? month}) async {
     final m = month ?? DateTime.now().toIso8601String().substring(0, 7);
+
     final res = await http.get(
       Uri.parse('$baseUrl/reports/monthly?month=$m'),
       headers: await _headers(),
     );
-    return jsonDecode(res.body);
+
+    final data = _decodeResponse(res);
+
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return {'success': false, 'message': 'Không lấy được báo cáo tháng'};
   }
 }
