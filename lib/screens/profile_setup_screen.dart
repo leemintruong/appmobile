@@ -310,7 +310,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _activity,
+              initialValue: _activity,
               decoration: InputDecoration(
                 labelText: 'Mức vận động',
                 border: OutlineInputBorder(

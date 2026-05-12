@@ -8,8 +8,40 @@ class ProfileScreen extends StatelessWidget {
 
   const ProfileScreen({super.key, this.profile});
 
+  Map<String, dynamic> get _p {
+    if (profile == null) return {};
+
+    if (profile!['data'] is Map<String, dynamic>) {
+      return profile!['data'];
+    }
+
+    if (profile!['profile'] is Map<String, dynamic>) {
+      return profile!['profile'];
+    }
+
+    if (profile!['user'] is Map<String, dynamic>) {
+      return profile!['user'];
+    }
+
+    return profile!;
+  }
+
+  String _getValue(List<String> keys, {String fallback = '--'}) {
+    for (final key in keys) {
+      final value = _p[key];
+
+      if (value != null && value.toString().isNotEmpty) {
+        return value.toString();
+      }
+    }
+
+    return fallback;
+  }
+
   String _getActivityLabel() {
-    switch (profile?['activity_level']) {
+    final value = _getValue(['activity_level'], fallback: '');
+
+    switch (value) {
       case 'sedentary':
         return 'Ít vận động';
       case 'light':
@@ -26,7 +58,9 @@ class ProfileScreen extends StatelessWidget {
   }
 
   String _getGoalLabel() {
-    switch (profile?['goal_type']) {
+    final value = _getValue(['goal_type'], fallback: '');
+
+    switch (value) {
       case 'lose_weight':
         return 'Giảm cân';
       case 'gain_weight':
@@ -54,12 +88,12 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = profile?['name'] ?? 'Người dùng';
-    final email = profile?['email'] ?? '';
-    final age = profile?['age'] ?? '--';
-    final height = profile?['height'] ?? '--';
-    final weight = profile?['weight'] ?? '--';
-    final dailyCalorieGoal = profile?['daily_calorie_goal'] ?? '--';
+    final name = _getValue(['name', 'full_name'], fallback: 'Người dùng');
+    final email = _getValue(['email'], fallback: '');
+    final age = _getValue(['age']);
+    final height = _getValue(['height']);
+    final weight = _getValue(['weight']);
+    final dailyCalorieGoal = _getValue(['daily_calorie_goal', 'calorie_goal']);
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -72,9 +106,7 @@ class ProfileScreen extends StatelessWidget {
               radius: 44,
               backgroundColor: AppColors.primary,
               child: Text(
-                name.toString().isNotEmpty
-                    ? name.toString()[0].toUpperCase()
-                    : 'U',
+                name.isNotEmpty ? name[0].toUpperCase() : 'U',
                 style: const TextStyle(
                   fontSize: 36,
                   color: Colors.white,
@@ -86,7 +118,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 12),
 
             Text(
-              name.toString(),
+              name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
@@ -100,7 +132,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 4),
 
             Text(
-              email.toString(),
+              email,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,

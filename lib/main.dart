@@ -18,7 +18,6 @@ class NutritionApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const SplashScreen(),
-
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(
