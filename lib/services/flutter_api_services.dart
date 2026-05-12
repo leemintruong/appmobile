@@ -92,10 +92,7 @@ class ApiService {
     final res = await http.post(
       Uri.parse('$baseUrl/profile/goal'),
       headers: await _headers(),
-      body: jsonEncode({
-        'goal_type': goalType,
-        if (targetWeight != null) 'target_weight': targetWeight,
-      }),
+      body: jsonEncode({'goal_type': goalType, 'target_weight': ?targetWeight}),
     );
     return jsonDecode(res.body);
   }
@@ -146,7 +143,7 @@ class ApiService {
       body: jsonEncode({
         'meal_type': mealType,
         'items': items, // [{ food_id, quantity }]
-        if (date != null) 'date': date,
+        'date': ?date,
       }),
     );
     return jsonDecode(res.body);
@@ -178,11 +175,7 @@ class ApiService {
     final res = await http.post(
       Uri.parse('$baseUrl/weights'),
       headers: await _headers(),
-      body: jsonEncode({
-        'weight': weight,
-        if (date != null) 'date': date,
-        if (note != null) 'note': note,
-      }),
+      body: jsonEncode({'weight': weight, 'date': ?date, 'note': ?note}),
     );
     return jsonDecode(res.body);
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
+import 'home_screen.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   final Map<String, dynamic>? profile;
@@ -187,6 +188,32 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             _menuItem(Icons.notifications_outlined, 'Cài đặt thông báo', () {}),
             const SizedBox(height: 8),
             _menuItem(Icons.logout, 'Đăng xuất', _logout, color: AppColors.fat),
+            const SizedBox(height: 20),
+
+            // ── Button Tiếp tục ────────────────────────────
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  );
+                },
+                child: const Text(
+                  'Tiếp tục',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ),
+            ),
           ],
         ),
       ),

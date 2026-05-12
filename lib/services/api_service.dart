@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   // Android Emulator dùng 10.0.2.2 để gọi localhost của máy tính.
   // Nếu chạy Chrome thì đổi thành: http://localhost:3000/api
-  static const String baseUrl = 'http://10.0.2.2:3000/api';
+  //static const String baseUrl = 'http://10.0.2.2:3000/api';
+  static const String baseUrl = 'http://localhost:3000/api';
 
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -204,10 +205,7 @@ class ApiService {
     final res = await http.post(
       Uri.parse('$baseUrl/profile/goal'),
       headers: await _headers(),
-      body: jsonEncode({
-        'goal_type': goalType,
-        if (targetWeight != null) 'target_weight': targetWeight,
-      }),
+      body: jsonEncode({'goal_type': goalType, 'target_weight': ?targetWeight}),
     );
 
     final data = _decodeResponse(res);
@@ -290,11 +288,7 @@ class ApiService {
     final res = await http.post(
       Uri.parse('$baseUrl/meals'),
       headers: await _headers(),
-      body: jsonEncode({
-        'meal_type': mealType,
-        'items': items,
-        if (date != null) 'date': date,
-      }),
+      body: jsonEncode({'meal_type': mealType, 'items': items, 'date': ?date}),
     );
 
     print('ADD MEAL STATUS: ${res.statusCode}');
@@ -352,11 +346,7 @@ class ApiService {
     final res = await http.post(
       Uri.parse('$baseUrl/weights'),
       headers: await _headers(),
-      body: jsonEncode({
-        'weight': weight,
-        if (date != null) 'date': date,
-        if (note != null) 'note': note,
-      }),
+      body: jsonEncode({'weight': weight, 'date': ?date, 'note': ?note}),
     );
 
     final data = _decodeResponse(res);

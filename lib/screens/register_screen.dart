@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
-import 'login_screen.dart';
+import 'profile_setup_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -73,9 +73,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         );
 
+        // Chuyển sang ProfileSetupScreen để điền thêm thông tin
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          MaterialPageRoute(
+            builder: (_) => ProfileSetupScreen(profile: result['user'] ?? {}),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
