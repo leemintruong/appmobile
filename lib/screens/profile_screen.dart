@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
+import 'profile_setup_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   final Map<String, dynamic>? profile;
@@ -10,54 +11,21 @@ class ProfileScreen extends StatelessWidget {
 
   Map<String, dynamic> get _p {
     if (profile == null) return {};
-
-    if (profile!['data'] is Map<String, dynamic>) {
-      return profile!['data'];
-    }
-
-    if (profile!['profile'] is Map<String, dynamic>) {
-      return profile!['profile'];
-    }
-
-    if (profile!['user'] is Map<String, dynamic>) {
-      return profile!['user'];
-    }
-
+    if (profile!['data'] is Map<String, dynamic>) return profile!['data'];
+    if (profile!['profile'] is Map<String, dynamic>) return profile!['profile'];
+    if (profile!['user'] is Map<String, dynamic>) return profile!['user'];
     return profile!;
   }
 
   String _getValue(List<String> keys, {String fallback = '--'}) {
     for (final key in keys) {
       final value = _p[key];
-
-      if (value != null && value.toString().isNotEmpty) {
-        return value.toString();
-      }
+      if (value != null && value.toString().isNotEmpty) return value.toString();
     }
-
     return fallback;
   }
 
-  String _getActivityLabel() {
-    final value = _getValue(['activity_level'], fallback: '');
-
-    switch (value) {
-      case 'sedentary':
-        return 'Ít vận động';
-      case 'light':
-        return 'Nhẹ';
-      case 'moderate':
-        return 'Vừa phải';
-      case 'active':
-        return 'Nhiều';
-      case 'very_active':
-        return 'Rất nhiều';
-      default:
-        return '--';
-    }
-  }
-
-  String _getGoalLabel() {
+  String _goalLabel() {
     final value = _getValue(['goal_type'], fallback: '');
 
     switch (value) {
@@ -70,11 +38,11 @@ class ProfileScreen extends StatelessWidget {
       case 'build_muscle':
         return 'Tăng cơ';
       default:
-        return '--';
+        return 'Giảm cân';
     }
   }
 
-  Future<void> _handleLogout(BuildContext context) async {
+  Future<void> _logout(BuildContext context) async {
     await ApiService.logout();
 
     if (!context.mounted) return;
@@ -88,96 +56,57 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = _getValue(['name', 'full_name'], fallback: 'Người dùng');
-    final email = _getValue(['email'], fallback: '');
-    final age = _getValue(['age']);
-    final height = _getValue(['height']);
-    final weight = _getValue(['weight']);
-    final dailyCalorieGoal = _getValue(['daily_calorie_goal', 'calorie_goal']);
+    final name = _getValue(['name', 'full_name'], fallback: 'Nguyễn Văn A');
+    final first = name.isNotEmpty ? name[0].toUpperCase() : 'A';
 
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
           children: [
-            const SizedBox(height: 12),
-
-            CircleAvatar(
-              radius: 44,
-              backgroundColor: AppColors.primary,
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : 'U',
-                style: const TextStyle(
-                  fontSize: 36,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+            const Text(
+              'Cá nhân',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
                 color: AppColors.textDark,
               ),
             ),
-
-            const SizedBox(height: 4),
-
-            Text(
-              email,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+            const SizedBox(height: 44),
+            _profileHeader(first, name),
+            const SizedBox(height: 44),
+            _menuCard(
+              title: 'Hồ sơ cá nhân',
+              subtitle: 'Tuổi, chiều cao, cân nặng',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProfileSetupScreen(profile: _p),
+                  ),
+                );
+              },
             ),
-
-            const SizedBox(height: 24),
-
-            _infoCard([
-              _infoRow(Icons.cake_outlined, 'Tuổi', '$age tuổi'),
-              _infoRow(Icons.height, 'Chiều cao', '$height cm'),
-              _infoRow(Icons.monitor_weight_outlined, 'Cân nặng', '$weight kg'),
-              _infoRow(Icons.directions_run, 'Vận động', _getActivityLabel()),
-            ]),
-
-            const SizedBox(height: 12),
-
-            _infoCard([
-              _infoRow(Icons.flag_outlined, 'Mục tiêu', _getGoalLabel()),
-              _infoRow(
-                Icons.local_fire_department_outlined,
-                'Calo/ngày',
-                '$dailyCalorieGoal kcal',
-              ),
-            ]),
-
-            const SizedBox(height: 12),
-
-            _menuItem(Icons.flag_outlined, 'Thay đổi mục tiêu', () {}),
-
-            const SizedBox(height: 8),
-
-            _menuItem(Icons.notifications_outlined, 'Cài đặt thông báo', () {}),
-
-            const SizedBox(height: 8),
-
-            _menuItem(Icons.help_outline, 'Trợ giúp', () {}),
-
-            const SizedBox(height: 8),
-
-            _menuItem(
-              Icons.logout,
-              'Đăng xuất',
-              () => _handleLogout(context),
-              color: AppColors.fat,
+            const SizedBox(height: 14),
+            _menuCard(
+              title: 'Mục tiêu dinh dưỡng',
+              subtitle: 'Calo, protein, carb, fat',
+              onTap: () {},
+            ),
+            const SizedBox(height: 14),
+            _menuCard(
+              title: 'Cài đặt thông báo',
+              subtitle: 'Nhắc bữa ăn, cân nặng',
+              onTap: () {},
+            ),
+            const SizedBox(height: 14),
+            _menuCard(title: 'Đơn vị đo', subtitle: 'kg/cm', onTap: () {}),
+            const SizedBox(height: 14),
+            _menuCard(
+              title: 'Đăng xuất',
+              subtitle: 'Thoát tài khoản',
+              onTap: () => _logout(context),
             ),
           ],
         ),
@@ -185,50 +114,52 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _infoCard(List<Widget> children) {
+  Widget _profileHeader(String first, String name) {
     return Container(
-      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white.withOpacity(0.62),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Column(children: children),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.primary, size: 20),
-
-          const SizedBox(width: 12),
-
-          Expanded(
-            flex: 4,
+          CircleAvatar(
+            radius: 31,
+            backgroundColor: AppColors.softGreen,
             child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+              first,
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w900,
+                fontSize: 28,
+              ),
             ),
           ),
-
-          const SizedBox(width: 8),
-
+          const SizedBox(width: 18),
           Expanded(
-            flex: 5,
-            child: Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
-                fontSize: 14,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Mục tiêu: ${_goalLabel()}',
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -236,45 +167,49 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _menuItem(
-    IconData icon,
-    String label,
-    VoidCallback onTap, {
-    Color? color,
+  Widget _menuCard({
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white.withOpacity(0.62),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           children: [
-            Icon(icon, color: color ?? AppColors.textGrey, size: 20),
-
-            const SizedBox(width: 12),
-
             Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: color ?? AppColors.textDark,
-                  fontSize: 15,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppColors.textGrey,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
             ),
-
-            const SizedBox(width: 8),
-
-            Icon(
+            const Icon(
               Icons.chevron_right,
-              color: color ?? AppColors.textGrey,
-              size: 20,
+              color: AppColors.textLight,
+              size: 28,
             ),
           ],
         ),

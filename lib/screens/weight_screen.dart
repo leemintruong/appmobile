@@ -4,15 +4,17 @@ import '../services/api_service.dart';
 
 class WeightScreen extends StatefulWidget {
   const WeightScreen({super.key});
+
   @override
   State<WeightScreen> createState() => _WeightScreenState();
 }
 
 class _WeightScreenState extends State<WeightScreen> {
-  final _ctrl = TextEditingController();
-  List<dynamic> _logs = [];
+  final _weightCtrl = TextEditingController();
+
   bool _loading = true;
   bool _saving = false;
+  List<dynamic> _weights = [];
 
   @override
   void initState() {
@@ -20,286 +22,267 @@ class _WeightScreenState extends State<WeightScreen> {
     _loadWeights();
   }
 
-  Future<void> _loadWeights() async {
-    setState(() => _loading = true);
-    final logs = await ApiService.getWeights();
-    setState(() {
-      _logs = logs.reversed.toList();
-      _loading = false;
-    });
+  @override
+  void dispose() {
+    _weightCtrl.dispose();
+    super.dispose();
   }
 
-  Future<void> _save() async {
-    final w = double.tryParse(_ctrl.text);
-    if (w == null || w <= 0) {
+  Future<void> _loadWeights() async {
+    setState(() => _loading = true);
+
+    try {
+      final weights = await ApiService.getWeights();
+
+      if (!mounted) return;
+
+      setState(() {
+        _weights = weights.reversed.toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không tải được cân nặng: $e')));
+    }
+  }
+
+  Future<void> _saveWeight() async {
+    final weight = double.tryParse(_weightCtrl.text.trim());
+
+    if (weight == null || weight <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng nhập cân nặng hợp lệ')),
       );
       return;
     }
+
     setState(() => _saving = true);
-    await ApiService.addWeight(w);
-    _ctrl.clear();
-    await _loadWeights();
-    setState(() => _saving = false);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã lưu cân nặng!'),
-          backgroundColor: AppColors.primary,
-        ),
-      );
+
+    try {
+      final result = await ApiService.addWeight(weight);
+
+      if (!mounted) return;
+
+      if (result['success'] == false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Không lưu được cân nặng'),
+          ),
+        );
+        return;
+      }
+
+      _weightCtrl.clear();
+      await _loadWeights();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<void> _delete(int id) async {
-    await ApiService.deleteWeight(id);
-    _loadWeights();
+  double get _currentWeight {
+    if (_weights.isEmpty) return 65.0;
+    final first = _weights.first;
+    return double.tryParse(first['weight'].toString()) ?? 65.0;
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _loadWeights,
-        color: AppColors.primary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Theo dõi cân nặng',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── Nhập cân nặng ──────────────────────────
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              )
+            : RefreshIndicator(
+                onRefresh: _loadWeights,
+                color: AppColors.primary,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
                   children: [
                     const Text(
-                      'Ghi cân nặng hôm nay',
+                      'Theo dõi cân nặng',
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textDark,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _ctrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'Nhập cân nặng (kg)',
-                              suffixText: 'kg',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              filled: true,
-                              fillColor: AppColors.background,
-                            ),
+                    const SizedBox(height: 44),
+                    _currentWeightCard(),
+                    const SizedBox(height: 28),
+                    const Text(
+                      'Nhập cân nặng mới',
+                      style: TextStyle(
+                        color: AppColors.textGrey,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _weightCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '64.8',
+                        hintStyle: const TextStyle(color: AppColors.textLight),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.6),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 18,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(
+                            color: AppColors.inputBorder,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        _saving
-                            ? const CircularProgressIndicator(
-                                color: AppColors.primary,
-                              )
-                            : ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primary,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 14,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                                onPressed: _save,
-                                child: const Text('Lưu'),
-                              ),
-                      ],
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(
+                            color: AppColors.inputBorder,
+                          ),
+                        ),
+                      ),
                     ),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      height: 58,
+                      child: ElevatedButton(
+                        onPressed: _saving ? null : _saveWeight,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        child: _saving
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            : const Text(
+                                'Lưu cân nặng',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 34),
+                    const Text(
+                      'Lịch sử gần đây',
+                      style: TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (_weights.isEmpty)
+                      const Text(
+                        'Chưa có lịch sử cân nặng',
+                        style: TextStyle(color: AppColors.textGrey),
+                      )
+                    else
+                      ..._weights.take(5).map((w) => _historyCard(w)),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // ── Thay đổi ──────────────────────────────
-              if (_logs.length >= 2) _changeCard(),
-
-              const SizedBox(height: 12),
-              const Text(
-                'Lịch sử',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // ── Danh sách ─────────────────────────────
-              _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primary,
-                      ),
-                    )
-                  : _logs.isEmpty
-                  ? Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'Chưa có dữ liệu.\nHãy ghi cân nặng đầu tiên!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.textGrey),
-                        ),
-                      ),
-                    )
-                  : Column(
-                      children: _logs.map((log) {
-                        final id = log['id'] as int;
-                        final date = log['log_date'] as String;
-                        final w = (log['weight'] as num).toDouble();
-                        return Dismissible(
-                          key: Key('w_$id'),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 20),
-                            decoration: BoxDecoration(
-                              color: AppColors.fat,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.delete,
-                              color: Colors.white,
-                            ),
-                          ),
-                          onDismissed: (_) => _delete(id),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.monitor_weight_outlined,
-                                      color: AppColors.primary,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      date,
-                                      style: const TextStyle(
-                                        color: AppColors.textGrey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  '$w kg',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textDark,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-            ],
-          ),
-        ),
       ),
     );
   }
 
-  Widget _changeCard() {
-    final first = (_logs.last['weight'] as num).toDouble();
-    final last = (_logs.first['weight'] as num).toDouble();
-    final diff = last - first;
-    final isLoss = diff < 0;
-
+  Widget _currentWeightCard() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: (isLoss ? AppColors.primary : AppColors.secondary).withOpacity(
-          0.08,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: (isLoss ? AppColors.primary : AppColors.secondary).withOpacity(
-            0.2,
-          ),
-        ),
+        color: Colors.white.withOpacity(0.62),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _miniStat('Bắt đầu', '$first kg'),
-          const Icon(Icons.arrow_forward, color: AppColors.textGrey, size: 18),
-          _miniStat('Hiện tại', '$last kg'),
-          _miniStat(
-            'Thay đổi',
-            '${isLoss ? '' : '+'}${diff.toStringAsFixed(1)} kg',
-            color: isLoss ? AppColors.primary : AppColors.secondary,
+          const Text(
+            'Cân nặng hiện tại',
+            style: TextStyle(
+              color: AppColors.textGrey,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${_currentWeight.toStringAsFixed(1)} kg',
+            style: const TextStyle(
+              color: AppColors.textDark,
+              fontSize: 44,
+              height: 1,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Mục tiêu: 60 kg',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _miniStat(String label, String value, {Color? color}) => Column(
-    children: [
-      Text(
-        value,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.bold,
-          color: color ?? AppColors.textDark,
-        ),
+  Widget _historyCard(dynamic item) {
+    final date = item['log_date']?.toString().substring(0, 10) ?? '--';
+    final weight = item['weight']?.toString() ?? '--';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.62),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
       ),
-      Text(
-        label,
-        style: const TextStyle(fontSize: 11, color: AppColors.textGrey),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              date,
+              style: const TextStyle(
+                color: AppColors.textGrey,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            '$weight kg',
+            style: const TextStyle(
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
+          ),
+        ],
       ),
-    ],
-  );
+    );
+  }
 }

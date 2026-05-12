@@ -30,73 +30,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Map<String, dynamic> _normalizeObject(dynamic data) {
     if (data is Map<String, dynamic>) {
-      if (data['data'] is Map<String, dynamic>) {
-        return data['data'];
-      }
-
-      if (data['profile'] is Map<String, dynamic>) {
-        return data['profile'];
-      }
-
-      if (data['user'] is Map<String, dynamic>) {
-        return data['user'];
-      }
-
-      if (data['report'] is Map<String, dynamic>) {
-        return data['report'];
-      }
-
+      if (data['data'] is Map<String, dynamic>) return data['data'];
+      if (data['profile'] is Map<String, dynamic>) return data['profile'];
+      if (data['user'] is Map<String, dynamic>) return data['user'];
+      if (data['report'] is Map<String, dynamic>) return data['report'];
       return data;
     }
-
     return {};
   }
 
   Future<void> _loadHomeData() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final profileResult = await ApiService.getProfile();
       final reportResult = await ApiService.getDailyReport();
       final mealsResult = await ApiService.getMeals();
 
+      if (!mounted) return;
+
       setState(() {
         _profile = _normalizeObject(profileResult);
         _dailyReport = _normalizeObject(reportResult);
         _meals = _normalizeObject(mealsResult);
       });
-
-      print('HOME PROFILE NORMALIZED: $_profile');
-      print('HOME REPORT NORMALIZED: $_dailyReport');
-      print('HOME MEALS NORMALIZED: $_meals');
     } catch (e) {
-      print('LOAD HOME DATA ERROR: $e');
+      if (!mounted) return;
 
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Không tải được dữ liệu: $e')));
-      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không tải được dữ liệu: $e')));
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   String _getProfileValue(List<String> keys, {String fallback = '--'}) {
     for (final key in keys) {
       final value = _profile[key];
-
-      if (value != null && value.toString().isNotEmpty) {
-        return value.toString();
-      }
+      if (value != null && value.toString().isNotEmpty) return value.toString();
     }
-
     return fallback;
   }
 
@@ -112,7 +85,27 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    final nutrition = _dailyReport['nutrition'];
+    if (nutrition is Map<String, dynamic>) {
+      for (final key in keys) {
+        final value = nutrition[key];
+
+        if (value is num) return value;
+
+        if (value != null) {
+          final parsed = num.tryParse(value.toString());
+          if (parsed != null) return parsed;
+        }
+      }
+    }
+
     return fallback;
+  }
+
+  List<dynamic> _mealList() {
+    final meals = _meals['meals'];
+    if (meals is List) return meals;
+    return [];
   }
 
   Future<void> _openAddMeal() async {
@@ -126,107 +119,94 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openReport() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ReportScreen()),
-    );
-
-    if (mounted) {
-      _loadHomeData();
-    }
-  }
-
-  Future<void> _openWeight() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const WeightScreen()),
-    );
-
-    if (mounted) {
-      _loadHomeData();
-    }
-  }
-
   void _handleBottomTap(int index) {
-    if (index == 1) {
-      _openAddMeal();
-      return;
-    }
+    setState(() => _currentIndex = index);
 
-    if (index == 2) {
-      _openReport();
-      return;
-    }
-
-    if (index == 3) {
-      _openWeight();
-      return;
-    }
-
-    setState(() {
-      _currentIndex = index;
-    });
-
-    if (index == 0 || index == 4) {
+    if (index == 0 || index == 3) {
       _loadHomeData();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final screen = _currentIndex == 4
-        ? ProfileScreen(profile: _profile)
-        : _buildDashboard();
+    final pages = [
+      _buildDashboard(),
+      const AddMealScreen(),
+      const ReportScreen(),
+      ProfileScreen(profile: _profile),
+    ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.pageGrey,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : screen,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.textGrey,
-        type: BottomNavigationBarType.fixed,
-        onTap: _handleBottomTap,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Trang chủ',
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
+          : pages[_currentIndex],
+      bottomNavigationBar: _bottomNav(),
+    );
+  }
+
+  Widget _bottomNav() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+      height: 70,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle_outline),
-            activeIcon: Icon(Icons.add_circle),
-            label: 'Thêm',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
-            activeIcon: Icon(Icons.bar_chart),
-            label: 'Báo cáo',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.monitor_weight_outlined),
-            activeIcon: Icon(Icons.monitor_weight),
-            label: 'Cân nặng',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Cá nhân',
-          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _navItem(0, '🏠', 'Home'),
+          _navItem(1, '🍽️', 'Meals'),
+          _navItem(2, '📊', 'Report'),
+          _navItem(3, '👤', 'Profile'),
         ],
       ),
     );
   }
 
+  Widget _navItem(int index, String icon, String label) {
+    final selected = _currentIndex == index;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _handleBottomTap(index),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(icon, style: const TextStyle(fontSize: 20)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? AppColors.primary : AppColors.textGrey,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDashboard() {
-    final name = _getProfileValue(['name', 'full_name'], fallback: 'Bạn');
-    final dailyGoal = _getProfileValue([
+    final dailyGoalText = _getProfileValue([
       'daily_calorie_goal',
       'calorie_goal',
-    ], fallback: '0');
+    ], fallback: '2000');
+
+    final dailyGoal = num.tryParse(dailyGoalText) ?? 2000;
 
     final totalCalories = _getReportNumber([
       'total_calories',
@@ -243,63 +223,100 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final totalFat = _getReportNumber(['total_fat', 'fat'], fallback: 0);
 
-    final goalNumber = num.tryParse(dailyGoal) ?? 0;
-    final progress = goalNumber == 0 ? 0.0 : (totalCalories / goalNumber);
+    final remaining = dailyGoal - totalCalories;
+    final progress = dailyGoal == 0 ? 0.0 : (totalCalories / dailyGoal);
 
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadHomeData,
+        color: AppColors.primary,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
           children: [
-            _headerCard(name),
-            const SizedBox(height: 16),
+            const Text(
+              'Trang chủ',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Hôm nay',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 20),
             _calorieCard(
               totalCalories: totalCalories,
-              dailyGoal: goalNumber,
+              dailyGoal: dailyGoal,
+              remaining: remaining,
               progress: progress.clamp(0.0, 1.0),
             ),
-            const SizedBox(height: 16),
-            _macroCards(
-              protein: totalProtein,
-              carbs: totalCarbs,
-              fat: totalFat,
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _macroCard(
+                    title: 'Protein',
+                    value: '${totalProtein.toStringAsFixed(0)}g',
+                    progress: 0.7,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: _macroCard(
+                    title: 'Carb',
+                    value: '${totalCarbs.toStringAsFixed(0)}g',
+                    progress: 0.58,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: _macroCard(
+                    title: 'Fat',
+                    value: '${totalFat.toStringAsFixed(0)}g',
+                    progress: 0.46,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+            const Text(
+              'Bữa ăn',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textDark,
+              ),
             ),
             const SizedBox(height: 16),
-            _mealPreview(),
+            _mealSection(),
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 58,
+              child: ElevatedButton(
+                onPressed: _openAddMeal,
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: const Text(
+                  '+ Thêm bữa ăn',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                ),
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _headerCard(String name) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Xin chào, $name!',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Hãy ghi lại bữa ăn để theo dõi dinh dưỡng hôm nay.',
-            style: TextStyle(color: Colors.white, fontSize: 14),
-          ),
-        ],
       ),
     );
   }
@@ -307,150 +324,120 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _calorieCard({
     required num totalCalories,
     required num dailyGoal,
+    required num remaining,
     required double progress,
   }) {
-    final remaining = dailyGoal - totalCalories;
-
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Calo hôm nay',
+            'Calo đã nạp',
             style: TextStyle(
-              color: AppColors.textDark,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
+              color: AppColors.textGrey,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(
-                child: _miniInfo(
-                  'Đã nạp',
-                  '${totalCalories.toStringAsFixed(0)} kcal',
+              Text(
+                totalCalories.toStringAsFixed(0),
+                style: const TextStyle(
+                  fontSize: 50,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
                 ),
               ),
-              Expanded(
-                child: _miniInfo(
-                  'Mục tiêu',
-                  '${dailyGoal.toStringAsFixed(0)} kcal',
-                ),
-              ),
-              Expanded(
-                child: _miniInfo(
-                  remaining >= 0 ? 'Còn lại' : 'Vượt',
-                  '${remaining.abs().toStringAsFixed(0)} kcal',
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Text(
+                  '/ ${dailyGoal.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: AppColors.textGrey,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          LinearProgressIndicator(
-            value: progress,
-            minHeight: 10,
-            borderRadius: BorderRadius.circular(20),
-            color: AppColors.primary,
-            backgroundColor: AppColors.primary.withOpacity(0.15),
+          const SizedBox(height: 24),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 13,
+              color: AppColors.primary,
+              backgroundColor: AppColors.border,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            remaining >= 0
+                ? 'Còn lại: ${remaining.toStringAsFixed(0)} kcal'
+                : 'Vượt: ${remaining.abs().toStringAsFixed(0)} kcal',
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _miniInfo(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _macroCards({
-    required num protein,
-    required num carbs,
-    required num fat,
-  }) {
-    return Row(
-      children: [
-        Expanded(
-          child: _macroCard(
-            title: 'Protein',
-            value: '${protein.toStringAsFixed(1)}g',
-            icon: Icons.fitness_center,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _macroCard(
-            title: 'Carb',
-            value: '${carbs.toStringAsFixed(1)}g',
-            icon: Icons.rice_bowl,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _macroCard(
-            title: 'Fat',
-            value: '${fat.toStringAsFixed(1)}g',
-            icon: Icons.water_drop,
-          ),
-        ),
-      ],
     );
   }
 
   Widget _macroCard({
     required String title,
     required String value,
-    required IconData icon,
+    required double progress,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
+      height: 116,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primary),
-          const SizedBox(height: 8),
           Text(
             title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
+            style: const TextStyle(
+              color: AppColors.textGrey,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-          const SizedBox(height: 4),
+          const Spacer(),
           Text(
             value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: AppColors.textDark,
-              fontWeight: FontWeight.bold,
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              color: AppColors.primary,
+              backgroundColor: AppColors.border,
             ),
           ),
         ],
@@ -458,34 +445,116 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _mealPreview() {
+  Widget _mealSection() {
+    final meals = _mealList();
+
+    if (meals.isEmpty) {
+      return Column(
+        children: [
+          _mealCard('Sáng', 'Chưa ghi', '0 kcal'),
+          const SizedBox(height: 12),
+          _mealCard('Trưa', 'Chưa ghi', '0 kcal'),
+          const SizedBox(height: 12),
+          _mealCard('Tối', 'Chưa ghi', '0 kcal'),
+        ],
+      );
+    }
+
+    return Column(
+      children: meals.map((meal) {
+        final mealType = meal['meal_type']?.toString() ?? '';
+        final title = _mealTypeLabel(mealType);
+        final total = meal['total_calories'] ?? 0;
+        final items = meal['items'];
+
+        String subtitle = 'Đã ghi';
+        if (items is List && items.isNotEmpty) {
+          subtitle = items
+              .take(2)
+              .map((e) => e['food_name']?.toString() ?? '')
+              .where((e) => e.isNotEmpty)
+              .join(', ');
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _mealCard(
+            title,
+            subtitle,
+            '${NumberFormatHelper.format(total)} kcal',
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _mealTypeLabel(String type) {
+    switch (type) {
+      case 'breakfast':
+        return 'Sáng';
+      case 'lunch':
+        return 'Trưa';
+      case 'dinner':
+        return 'Tối';
+      case 'snack':
+        return 'Phụ';
+      default:
+        return type;
+    }
+  }
+
+  Widget _mealCard(String title, String subtitle, String kcal) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          const Text(
-            'Nhật ký hôm nay',
-            style: TextStyle(
-              color: AppColors.textDark,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
           Text(
-            _meals.isEmpty
-                ? 'Chưa có dữ liệu bữa ăn hoặc API trả về rỗng.'
-                : 'Đã tải dữ liệu bữa ăn từ backend.',
-            style: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+            kcal,
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+class NumberFormatHelper {
+  static String format(dynamic value) {
+    final n = num.tryParse(value.toString()) ?? 0;
+    return n.toStringAsFixed(0);
   }
 }
