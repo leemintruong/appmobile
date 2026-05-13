@@ -258,6 +258,27 @@ class ApiService {
     return {'success': false, 'message': 'Không lấy được món ăn'};
   }
 
+  static Future<Map<String, dynamic>> createFood(
+    Map<String, dynamic> data,
+  ) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/foods'),
+      headers: await _headers(),
+      body: jsonEncode(data),
+    );
+
+    print('CREATE FOOD STATUS: ${res.statusCode}');
+    print('CREATE FOOD BODY: ${res.body}');
+
+    final decoded = _decodeResponse(res);
+
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    return {'success': false, 'message': 'Không thêm được thực phẩm'};
+  }
+
   // MEALS
 
   static Future<Map<String, dynamic>> getMeals({String? date}) async {

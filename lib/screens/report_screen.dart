@@ -11,6 +11,7 @@ class ReportScreen extends StatefulWidget {
 
 class _ReportScreenState extends State<ReportScreen> {
   bool _loading = true;
+
   Map<String, dynamic> _daily = {};
   Map<String, dynamic> _weekly = {};
 
@@ -30,8 +31,8 @@ class _ReportScreenState extends State<ReportScreen> {
       if (!mounted) return;
 
       setState(() {
-        _daily = daily;
-        _weekly = weekly;
+        _daily = _normalize(daily);
+        _weekly = _normalize(weekly);
         _loading = false;
       });
     } catch (e) {
@@ -45,20 +46,51 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  num _num(Map<String, dynamic> map, String key) {
-    final value = map[key];
-    if (value is num) return value;
-    return num.tryParse(value.toString()) ?? 0;
+  Map<String, dynamic> _normalize(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      if (data['data'] is Map<String, dynamic>) return data['data'];
+      if (data['report'] is Map<String, dynamic>) return data['report'];
+      return data;
+    }
+
+    return {};
+  }
+
+  num _readNumber(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key];
+
+      if (value is num) return value;
+
+      if (value != null) {
+        final parsed = num.tryParse(value.toString());
+        if (parsed != null) return parsed;
+      }
+    }
+
+    final nutrition = map['nutrition'];
+    if (nutrition is Map<String, dynamic>) {
+      for (final key in keys) {
+        final value = nutrition[key];
+
+        if (value is num) return value;
+
+        if (value != null) {
+          final parsed = num.tryParse(value.toString());
+          if (parsed != null) return parsed;
+        }
+      }
+    }
+
+    return 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final avg = _weekly['average'];
-    final avgCalories = avg is Map<String, dynamic>
-        ? _num(avg, 'avg_calories')
-        : _num(_weekly, 'avg_calories');
-
-    final totalCalories = _num(_daily, 'total_calories');
+    final totalCalories = _readNumber(_daily, ['total_calories', 'calories']);
+    final totalProtein = _readNumber(_daily, ['total_protein', 'protein']);
+    final totalCarbs = _readNumber(_daily, ['total_carbs', 'carbs']);
+    final totalFat = _readNumber(_daily, ['total_fat', 'fat']);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -71,49 +103,21 @@ class _ReportScreenState extends State<ReportScreen> {
                 onRefresh: _loadReport,
                 color: AppColors.primary,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 90),
                   children: [
-                    const Text(
-                      'Báo cáo',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Tuần này',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _chartCard(avgCalories),
-                    const SizedBox(height: 28),
-                    const Text(
-                      'Cân nặng',
-                      style: TextStyle(
-                        color: AppColors.textDark,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 20,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _weightSummary(),
-                    const SizedBox(height: 28),
-                    const Text(
-                      'Tổng kết',
-                      style: TextStyle(
-                        color: AppColors.textDark,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 20,
-                      ),
-                    ),
+                    _topHeader(),
                     const SizedBox(height: 16),
                     _summaryCard(totalCalories),
+                    const SizedBox(height: 16),
+                    _chartCard(),
+                    const SizedBox(height: 16),
+                    _macroReport(
+                      protein: totalProtein,
+                      carbs: totalCarbs,
+                      fat: totalFat,
+                    ),
+                    const SizedBox(height: 16),
+                    _aiInsightCard(),
                   ],
                 ),
               ),
@@ -121,144 +125,258 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Widget _chartCard(num avgCalories) {
-    final bars = [0.62, 0.78, 0.55, 0.92, 0.68, 1.0, 0.75];
-    final labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-
-    return Container(
-      height: 190,
-      padding: const EdgeInsets.fromLTRB(26, 26, 26, 20),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.72),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: 8,
-            left: 0,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Calo trung bình',
-                  style: TextStyle(
-                    color: AppColors.textGrey,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '${avgCalories.toStringAsFixed(0)} cal',
-                  style: const TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textDark,
-                  ),
-                ),
-              ],
-            ),
+  Widget _topHeader() {
+    return Row(
+      children: [
+        const Text(
+          'Báo cáo',
+          style: TextStyle(
+            color: AppColors.textDark,
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(bars.length, (index) {
-                return Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Container(
-                        width: 26,
-                        height: 110 * bars[index],
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFB8F3D0),
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        labels[index],
-                        style: const TextStyle(
-                          color: AppColors.textGrey,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ),
+        ),
+        const Spacer(),
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.border),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _weightSummary() {
-    return Container(
-      padding: const EdgeInsets.all(26),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.72),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '65.0 kg',
-            style: TextStyle(
-              color: AppColors.textDark,
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-            ),
+          child: const Icon(
+            Icons.calendar_today,
+            color: AppColors.textDark,
+            size: 19,
           ),
-          const SizedBox(height: 10),
-          const Text(
-            'Giảm 0.6 kg so với tuần trước',
-            style: TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 22),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: 0.42,
-              minHeight: 10,
-              color: AppColors.primary,
-              backgroundColor: AppColors.border,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _summaryCard(num totalCalories) {
     return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.softGreen2,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFB8F3C8)),
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tổng năng lượng hôm nay',
+                  style: TextStyle(color: AppColors.textGrey, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${totalCalories.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Dữ liệu được tổng hợp từ nhật ký bữa ăn',
+                  style: TextStyle(color: AppColors.textLight, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(38),
+            ),
+            child: const Center(
+              child: Text('📈', style: TextStyle(fontSize: 34)),
+            ),
+          ),
+        ],
       ),
-      child: Text(
-        totalCalories > 0
-            ? 'Bạn đã ghi nhận ${totalCalories.toStringAsFixed(0)} kcal hôm nay.\nMacro đạt gần mục tiêu, cần duy trì đều hơn.'
-            : 'Bạn chưa có dữ liệu calo hôm nay.\nHãy ghi bữa ăn để xem báo cáo chính xác hơn.',
-        style: const TextStyle(
-          color: Color(0xFF047857),
-          fontSize: 15,
-          height: 1.6,
-          fontWeight: FontWeight.w600,
+    );
+  }
+
+  Widget _chartCard() {
+    final bars = [0.55, 0.75, 0.68, 0.9, 0.62, 1.0, 0.82];
+    final labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+
+    return Container(
+      height: 230,
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Calo trong tuần',
+            style: TextStyle(
+              color: AppColors.textDark,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Biểu đồ tiêu thụ năng lượng theo ngày',
+            style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+          ),
+          const Spacer(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(bars.length, (index) {
+              return Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 110 * bars[index],
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      labels[index],
+                      style: const TextStyle(
+                        color: AppColors.textGrey,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _macroReport({
+    required num protein,
+    required num carbs,
+    required num fat,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Phân tích macro',
+            style: TextStyle(
+              color: AppColors.textDark,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 18),
+          _macroLine(
+            'Protein',
+            '${protein.toStringAsFixed(0)}g',
+            AppColors.primary,
+            0.35,
+          ),
+          const SizedBox(height: 16),
+          _macroLine(
+            'Carbs',
+            '${carbs.toStringAsFixed(0)}g',
+            AppColors.protein,
+            0.50,
+          ),
+          const SizedBox(height: 16),
+          _macroLine(
+            'Fat',
+            '${fat.toStringAsFixed(0)}g',
+            AppColors.warning,
+            0.25,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _macroLine(String label, String value, Color color, double percent) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: percent,
+            minHeight: 9,
+            color: color,
+            backgroundColor: AppColors.border,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _aiInsightCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(24),
       ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('💡', style: TextStyle(fontSize: 28)),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Gợi ý hôm nay: Bạn nên bổ sung thêm protein và duy trì ghi bữa ăn đều đặn để báo cáo chính xác hơn.',
+              style: TextStyle(
+                color: AppColors.primaryDark,
+                fontSize: 14,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.035),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+      ],
     );
   }
 }

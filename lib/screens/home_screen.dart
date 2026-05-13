@@ -4,8 +4,8 @@ import '../services/api_service.dart';
 
 import 'add_meal_screen.dart';
 import 'report_screen.dart';
-import 'weight_screen.dart';
 import 'profile_screen.dart';
+import 'food_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +15,17 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  Future<void> _openAddMeal() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const AddMealScreen()),
+    );
+
+    if (mounted && result == true) {
+      _loadHomeData();
+    }
+  }
+
   int _currentIndex = 0;
 
   bool _isLoading = true;
@@ -36,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (data['report'] is Map<String, dynamic>) return data['report'];
       return data;
     }
+
     return {};
   }
 
@@ -65,22 +77,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String _getProfileValue(List<String> keys, {String fallback = '--'}) {
+  num _readNumber(List<String> keys, {num fallback = 0}) {
     for (final key in keys) {
-      final value = _profile[key];
-      if (value != null && value.toString().isNotEmpty) return value.toString();
-    }
-    return fallback;
-  }
+      final v = _dailyReport[key];
 
-  num _getReportNumber(List<String> keys, {num fallback = 0}) {
-    for (final key in keys) {
-      final value = _dailyReport[key];
+      if (v is num) return v;
 
-      if (value is num) return value;
-
-      if (value != null) {
-        final parsed = num.tryParse(value.toString());
+      if (v != null) {
+        final parsed = num.tryParse(v.toString());
         if (parsed != null) return parsed;
       }
     }
@@ -88,15 +92,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final nutrition = _dailyReport['nutrition'];
     if (nutrition is Map<String, dynamic>) {
       for (final key in keys) {
-        final value = nutrition[key];
+        final v = nutrition[key];
 
-        if (value is num) return value;
+        if (v is num) return v;
 
-        if (value != null) {
-          final parsed = num.tryParse(value.toString());
+        if (v != null) {
+          final parsed = num.tryParse(v.toString());
           if (parsed != null) return parsed;
         }
       }
+    }
+
+    return fallback;
+  }
+
+  String _readProfile(List<String> keys, {String fallback = ''}) {
+    for (final key in keys) {
+      final v = _profile[key];
+
+      if (v != null && v.toString().isNotEmpty) return v.toString();
     }
 
     return fallback;
@@ -108,18 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return [];
   }
 
-  Future<void> _openAddMeal() async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const AddMealScreen()),
-    );
-
-    if (mounted && result == true) {
-      _loadHomeData();
-    }
-  }
-
-  void _handleBottomTap(int index) {
+  void _onNavTap(int index) {
     setState(() => _currentIndex = index);
 
     if (index == 0 || index == 3) {
@@ -130,14 +133,14 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      _buildDashboard(),
-      const AddMealScreen(),
+      _homePage(),
+      const FoodListScreen(),
       const ReportScreen(),
       ProfileScreen(profile: _profile),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.pageGrey,
+      backgroundColor: Colors.white,
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
@@ -147,171 +150,54 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _bottomNav() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-      height: 70,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _navItem(0, '🏠', 'Home'),
-          _navItem(1, '🍽️', 'Meals'),
-          _navItem(2, '📊', 'Report'),
-          _navItem(3, '👤', 'Profile'),
-        ],
-      ),
-    );
-  }
-
-  Widget _navItem(int index, String icon, String label) {
-    final selected = _currentIndex == index;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _handleBottomTap(index),
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 20)),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? AppColors.primary : AppColors.textGrey,
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDashboard() {
-    final dailyGoalText = _getProfileValue([
+  Widget _homePage() {
+    final goal = _readNumber([
       'daily_calorie_goal',
       'calorie_goal',
-    ], fallback: '2000');
+    ], fallback: 2000);
 
-    final dailyGoal = num.tryParse(dailyGoalText) ?? 2000;
+    final used = _readNumber(['total_calories', 'calories'], fallback: 750);
 
-    final totalCalories = _getReportNumber([
-      'total_calories',
-      'calories',
-      'calorie',
-    ], fallback: 0);
+    final remaining = goal - used;
 
-    final totalProtein = _getReportNumber([
-      'total_protein',
-      'protein',
-    ], fallback: 0);
+    final protein = _readNumber(['total_protein', 'protein'], fallback: 60);
 
-    final totalCarbs = _getReportNumber(['total_carbs', 'carbs'], fallback: 0);
+    final carbs = _readNumber(['total_carbs', 'carbs'], fallback: 250);
 
-    final totalFat = _getReportNumber(['total_fat', 'fat'], fallback: 0);
-
-    final remaining = dailyGoal - totalCalories;
-    final progress = dailyGoal == 0 ? 0.0 : (totalCalories / dailyGoal);
+    final fat = _readNumber(['total_fat', 'fat'], fallback: 44);
 
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadHomeData,
         color: AppColors.primary,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 90),
           children: [
-            const Text(
-              'Trang chủ',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Hôm nay',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 20),
-            _calorieCard(
-              totalCalories: totalCalories,
-              dailyGoal: dailyGoal,
-              remaining: remaining,
-              progress: progress.clamp(0.0, 1.0),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _macroCard(
-                    title: 'Protein',
-                    value: '${totalProtein.toStringAsFixed(0)}g',
-                    progress: 0.7,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: _macroCard(
-                    title: 'Carb',
-                    value: '${totalCarbs.toStringAsFixed(0)}g',
-                    progress: 0.58,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: _macroCard(
-                    title: 'Fat',
-                    value: '${totalFat.toStringAsFixed(0)}g',
-                    progress: 0.46,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-            const Text(
-              'Bữa ăn',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _mealSection(),
+            _topHeader(),
             const SizedBox(height: 18),
+            _calorieOverview(goal: goal, used: used, remaining: remaining),
+            const SizedBox(height: 18),
+            _macroCard(protein: protein, carbs: carbs, fat: fat),
+            const SizedBox(height: 22),
+            _mealJournal(),
+            const SizedBox(height: 18),
+
             SizedBox(
-              height: 58,
+              width: double.infinity,
+              height: 56,
               child: ElevatedButton(
                 onPressed: _openAddMeal,
                 style: ElevatedButton.styleFrom(
-                  elevation: 0,
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(28),
                   ),
                 ),
                 child: const Text(
                   '+ Thêm bữa ăn',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                 ),
               ),
             ),
@@ -321,76 +207,133 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _calorieCard({
-    required num totalCalories,
-    required num dailyGoal,
-    required num remaining,
-    required double progress,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(26),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Calo đã nạp',
-            style: TextStyle(
-              color: AppColors.textGrey,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
+  Widget _topHeader() {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: AppColors.border),
           ),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          child: const Row(
             children: [
+              Icon(Icons.favorite, color: AppColors.primary, size: 18),
+              SizedBox(width: 6),
               Text(
-                totalCalories.toStringAsFixed(0),
-                style: const TextStyle(
-                  fontSize: 50,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
+                'SứcKhỏe',
+                style: TextStyle(
                   color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Text(
-                  '/ ${dailyGoal.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    color: AppColors.textGrey,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 13,
-              color: AppColors.primary,
-              backgroundColor: AppColors.border,
+        ),
+        const Spacer(),
+        const Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              'Thứ Sáu, 12 Tháng',
+              style: TextStyle(color: AppColors.textGrey, fontSize: 14),
+            ),
+            Text(
+              'Tổng quan hằng ngày',
+              style: TextStyle(color: AppColors.textLight, fontSize: 13),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _calorieOverview({
+    required num goal,
+    required num used,
+    required num remaining,
+  }) {
+    final progress = goal == 0 ? 0.0 : (used / goal).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Calo còn lại',
+                  style: TextStyle(color: AppColors.textGrey, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${remaining.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Mục tiêu: ${goal.toStringAsFixed(0)} kcal · Đã dùng: ${used.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    _calorieMini('Tiêu thụ', '${used.toStringAsFixed(0)} kcal'),
+                    _calorieMini(
+                      'Còn lại',
+                      '${remaining.toStringAsFixed(0)} kcal',
+                      green: true,
+                    ),
+                    _calorieMini('Mục tiêu', '${goal.toStringAsFixed(0)} kcal'),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(width: 14),
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: const Center(
+              child: Text('☘️', style: TextStyle(fontSize: 36)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _calorieMini(String title, String value, {bool green = false}) {
+    return Expanded(
+      child: Column(
+        children: [
           Text(
-            remaining >= 0
-                ? 'Còn lại: ${remaining.toStringAsFixed(0)} kcal'
-                : 'Vượt: ${remaining.abs().toStringAsFixed(0)} kcal',
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
+            title,
+            style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: green ? AppColors.primary : AppColors.textDark,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -399,117 +342,158 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _macroCard({
-    required String title,
-    required String value,
-    required double progress,
+    required num protein,
+    required num carbs,
+    required num fat,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      height: 116,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.textGrey,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Phân bổ macro',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Center(
+                  child: Text('🚀', style: TextStyle(fontSize: 24)),
+                ),
+              ),
+            ],
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.textDark,
-              fontSize: 25,
-              fontWeight: FontWeight.w900,
-            ),
+          const SizedBox(height: 4),
+          const Text(
+            'Protein · Carbs · Fat',
+            style: TextStyle(color: AppColors.textGrey, fontSize: 13),
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              color: AppColors.primary,
-              backgroundColor: AppColors.border,
-            ),
+          const SizedBox(height: 20),
+          _macroLine(
+            'Protein',
+            '${protein.toStringAsFixed(0)}g',
+            0.30,
+            AppColors.primary,
+          ),
+          const SizedBox(height: 16),
+          _macroLine(
+            'Carbs',
+            '${carbs.toStringAsFixed(0)}g',
+            0.50,
+            AppColors.protein,
+          ),
+          const SizedBox(height: 16),
+          _macroLine(
+            'Fat',
+            '${fat.toStringAsFixed(0)}g',
+            0.20,
+            AppColors.warning,
           ),
         ],
       ),
     );
   }
 
-  Widget _mealSection() {
-    final meals = _mealList();
-
-    if (meals.isEmpty) {
-      return Column(
-        children: [
-          _mealCard('Sáng', 'Chưa ghi', '0 kcal'),
-          const SizedBox(height: 12),
-          _mealCard('Trưa', 'Chưa ghi', '0 kcal'),
-          const SizedBox(height: 12),
-          _mealCard('Tối', 'Chưa ghi', '0 kcal'),
-        ],
-      );
-    }
-
+  Widget _macroLine(String label, String value, double percent, Color color) {
     return Column(
-      children: meals.map((meal) {
-        final mealType = meal['meal_type']?.toString() ?? '';
-        final title = _mealTypeLabel(mealType);
-        final total = meal['total_calories'] ?? 0;
-        final items = meal['items'];
-
-        String subtitle = 'Đã ghi';
-        if (items is List && items.isNotEmpty) {
-          subtitle = items
-              .take(2)
-              .map((e) => e['food_name']?.toString() ?? '')
-              .where((e) => e.isNotEmpty)
-              .join(', ');
-        }
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _mealCard(
-            title,
-            subtitle,
-            '${NumberFormatHelper.format(total)} kcal',
+      children: [
+        Row(
+          children: [
+            Text(label, style: const TextStyle(color: AppColors.textGrey)),
+            const Spacer(),
+            Text(
+              '${(percent * 100).toStringAsFixed(0)}% · $value',
+              style: const TextStyle(color: AppColors.textDark, fontSize: 13),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: percent,
+            minHeight: 9,
+            color: color,
+            backgroundColor: AppColors.border,
           ),
-        );
-      }).toList(),
+        ),
+      ],
     );
   }
 
-  String _mealTypeLabel(String type) {
-    switch (type) {
-      case 'breakfast':
-        return 'Sáng';
-      case 'lunch':
-        return 'Trưa';
-      case 'dinner':
-        return 'Tối';
-      case 'snack':
-        return 'Phụ';
-      default:
-        return type;
-    }
+  Widget _mealJournal() {
+    final meals = _mealList();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+      decoration: _cardDecoration(),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+            child: Row(
+              children: [
+                const Text(
+                  'Nhật ký bữa ăn hôm nay',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${meals.length} mục',
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (meals.isEmpty) ...[
+            _mealRow('Sáng', '08:00 · 420 kcal', 'Đã ghi', true),
+            _mealRow('Trưa', '12:30 · 640 kcal', 'Đã ghi', true),
+            _mealRow('Tối', '19:00 · 520 kcal', 'Chưa', false),
+            _mealRow('Snack', '15:30 · 150 kcal', 'Đã ghi', true),
+          ] else
+            ...meals.map((m) {
+              final mealType = _mealLabel(m['meal_type']?.toString() ?? '');
+              final kcal = m['total_calories'] ?? 0;
+              return _mealRow(
+                mealType,
+                '${NumberFormatHelper.format(kcal)} kcal',
+                'Đã ghi',
+                true,
+              );
+            }),
+        ],
+      ),
+    );
   }
 
-  Widget _mealCard(String title, String subtitle, String kcal) {
+  Widget _mealRow(String title, String subtitle, String status, bool done) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
       ),
       child: Row(
         children: [
@@ -521,32 +505,120 @@ class _HomeScreenState extends State<HomeScreen> {
                   title,
                   style: const TextStyle(
                     color: AppColors.textDark,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textGrey,
-                    fontSize: 14,
+                    fontSize: 13,
                   ),
                 ),
+                const SizedBox(height: 10),
+                const Text('🍲  🥘  +1 mục', style: TextStyle(fontSize: 13)),
               ],
             ),
           ),
-          Text(
-            kcal,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
-            ),
+          Column(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: done ? AppColors.primary : Colors.grey.shade100,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                status,
+                style: TextStyle(
+                  color: done ? AppColors.primary : AppColors.warning,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.035),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+      ],
+    );
+  }
+
+  String _mealLabel(String type) {
+    switch (type) {
+      case 'breakfast':
+        return 'Sáng';
+      case 'lunch':
+        return 'Trưa';
+      case 'dinner':
+        return 'Tối';
+      case 'snack':
+        return 'Snack';
+      default:
+        return type;
+    }
+  }
+
+  Widget _bottomNav() {
+    return Container(
+      height: 66,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          _navItem(0, Icons.home, 'Trang chủ'),
+          _navItem(1, Icons.restaurant, 'Thực phẩm'),
+          _navItem(2, Icons.show_chart, 'Báo cáo'),
+          _navItem(3, Icons.person, 'Hồ sơ'),
+        ],
+      ),
+    );
+  }
+
+  Widget _navItem(int index, IconData icon, String label) {
+    final selected = _currentIndex == index;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onNavTap(index),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: selected ? AppColors.primary : AppColors.textGrey,
+              size: 23,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? AppColors.primary : AppColors.textGrey,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
