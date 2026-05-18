@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../services/app_events.dart';
 
 import 'add_meal_screen.dart';
 import 'report_screen.dart';
@@ -14,21 +16,12 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  Future<void> _openAddMeal() async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const AddMealScreen()),
-    );
-
-    if (mounted && result == true) {
-      _loadHomeData();
-    }
-  }
-
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
-
   bool _isLoading = true;
+  int _lastEventVersion = 0;
+  Timer? _pollingTimer;
+
   Map<String, dynamic> _profile = {};
   Map<String, dynamic> _dailyReport = {};
   Map<String, dynamic> _meals = {};
@@ -36,70 +29,112 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lastEventVersion = AppEvents.dataVersion.value;
+    AppEvents.dataVersion.addListener(_handleDataEvent);
     _loadHomeData();
+
+    // Refresh nhẹ để demo có cảm giác realtime hơn, không cần WebSocket.
+    _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (mounted && _currentIndex == 0) _loadHomeData(silent: true);
+    });
   }
 
-  Map<String, dynamic> _normalizeObject(dynamic data) {
-    if (data is Map<String, dynamic>) {
-      if (data['data'] is Map<String, dynamic>) return data['data'];
-      if (data['profile'] is Map<String, dynamic>) return data['profile'];
-      if (data['user'] is Map<String, dynamic>) return data['user'];
-      if (data['report'] is Map<String, dynamic>) return data['report'];
-      return data;
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AppEvents.dataVersion.removeListener(_handleDataEvent);
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadHomeData(silent: true);
     }
-
-    return {};
   }
 
-  Future<void> _loadHomeData() async {
-    setState(() => _isLoading = true);
+  void _handleDataEvent() {
+    if (!mounted) return;
+    if (_lastEventVersion != AppEvents.dataVersion.value) {
+      _lastEventVersion = AppEvents.dataVersion.value;
+      _loadHomeData(silent: true);
+    }
+  }
+
+  Future<void> _openAddMeal() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const AddMealScreen()),
+    );
+
+    if (mounted && result == true) {
+      AppEvents.notifyDataChanged();
+      await _loadHomeData();
+    }
+  }
+
+  Map<String, dynamic> _normalizeObject(dynamic data) => ApiService.normalizeObject(data);
+
+  Future<void> _loadHomeData({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _isLoading = true);
 
     try {
-      final profileResult = await ApiService.getProfile();
-      final reportResult = await ApiService.getDailyReport();
-      final mealsResult = await ApiService.getMeals();
+      final results = await Future.wait([
+        ApiService.getProfile(),
+        ApiService.getDailyReport(),
+        ApiService.getMeals(),
+      ]);
 
       if (!mounted) return;
 
       setState(() {
-        _profile = _normalizeObject(profileResult);
-        _dailyReport = _normalizeObject(reportResult);
-        _meals = _normalizeObject(mealsResult);
+        _profile = _normalizeObject(results[0]);
+        _dailyReport = _normalizeObject(results[1]);
+        _meals = _normalizeObject(results[2]);
       });
     } catch (e) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Không tải được dữ liệu: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không tải được dữ liệu: $e')),
+      );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && !silent) setState(() => _isLoading = false);
     }
   }
 
   num _readNumber(List<String> keys, {num fallback = 0}) {
     for (final key in keys) {
       final v = _dailyReport[key];
-
       if (v is num) return v;
-
       if (v != null) {
         final parsed = num.tryParse(v.toString());
         if (parsed != null) return parsed;
       }
     }
 
-    final nutrition = _dailyReport['nutrition'];
-    if (nutrition is Map<String, dynamic>) {
-      for (final key in keys) {
-        final v = nutrition[key];
-
-        if (v is num) return v;
-
-        if (v != null) {
-          final parsed = num.tryParse(v.toString());
-          if (parsed != null) return parsed;
+    for (final nestedKey in ['nutrition', 'goal']) {
+      final nested = _dailyReport[nestedKey];
+      if (nested is Map<String, dynamic>) {
+        for (final key in keys) {
+          final v = nested[key];
+          if (v is num) return v;
+          if (v != null) {
+            final parsed = num.tryParse(v.toString());
+            if (parsed != null) return parsed;
+          }
         }
+      }
+    }
+
+    final profileGoal = _profile;
+    for (final key in keys) {
+      final v = profileGoal[key];
+      if (v is num) return v;
+      if (v != null) {
+        final parsed = num.tryParse(v.toString());
+        if (parsed != null) return parsed;
       }
     }
 
@@ -109,10 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _readProfile(List<String> keys, {String fallback = ''}) {
     for (final key in keys) {
       final v = _profile[key];
-
       if (v != null && v.toString().isNotEmpty) return v.toString();
     }
-
     return fallback;
   }
 
@@ -124,9 +157,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onNavTap(int index) {
     setState(() => _currentIndex = index);
-
-    if (index == 0 || index == 3) {
-      _loadHomeData();
+    if (index == 0 || index == 2 || index == 3) {
+      _loadHomeData(silent: true);
+      AppEvents.notifyDataChanged();
     }
   }
 
@@ -142,29 +175,26 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            )
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : pages[_currentIndex],
       bottomNavigationBar: _bottomNav(),
     );
   }
 
   Widget _homePage() {
-    final goal = _readNumber([
-      'daily_calorie_goal',
-      'calorie_goal',
-    ], fallback: 2000);
-
-    final used = _readNumber(['total_calories', 'calories'], fallback: 750);
-
+    final goal = _readNumber(['daily_calorie_goal', 'calorie_goal'], fallback: 2000);
+    final used = _readNumber(['total_calories', 'calories'], fallback: 0);
     final remaining = goal - used;
 
-    final protein = _readNumber(['total_protein', 'protein'], fallback: 60);
+    final protein = _readNumber(['total_protein', 'protein'], fallback: 0);
+    final carbs = _readNumber(['total_carbs', 'carbs'], fallback: 0);
+    final fat = _readNumber(['total_fat', 'fat'], fallback: 0);
 
-    final carbs = _readNumber(['total_carbs', 'carbs'], fallback: 250);
-
-    final fat = _readNumber(['total_fat', 'fat'], fallback: 44);
+    final proteinGoal = _readNumber(['daily_protein_goal'], fallback: 100);
+    final carbsGoal = _readNumber(['daily_carbs_goal'], fallback: 250);
+    final fatGoal = _readNumber(['daily_fat_goal'], fallback: 60);
+    final water = _readNumber(['total_water_ml'], fallback: 0);
+    final waterGoal = _readNumber(['daily_water_goal_ml'], fallback: 2000);
 
     return SafeArea(
       child: RefreshIndicator(
@@ -177,11 +207,19 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 18),
             _calorieOverview(goal: goal, used: used, remaining: remaining),
             const SizedBox(height: 18),
-            _macroCard(protein: protein, carbs: carbs, fat: fat),
+            _macroCard(
+              protein: protein,
+              carbs: carbs,
+              fat: fat,
+              proteinGoal: proteinGoal,
+              carbsGoal: carbsGoal,
+              fatGoal: fatGoal,
+            ),
+            const SizedBox(height: 18),
+            _waterActivityCard(water: water, waterGoal: waterGoal),
             const SizedBox(height: 22),
             _mealJournal(),
             const SizedBox(height: 18),
-
             SizedBox(
               width: double.infinity,
               height: 56,
@@ -191,14 +229,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
                 ),
-                child: const Text(
-                  '+ Thêm bữa ăn',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                ),
+                child: const Text('+ Thêm bữa ăn', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               ),
             ),
           ],
@@ -208,6 +241,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _topHeader() {
+    final name = _readProfile(['name'], fallback: 'Bạn');
+    final today = DateTime.now();
+    final dateText = '${today.day}/${today.month}/${today.year}';
+
     return Row(
       children: [
         Container(
@@ -221,40 +258,24 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(Icons.favorite, color: AppColors.primary, size: 18),
               SizedBox(width: 6),
-              Text(
-                'SứcKhỏe',
-                style: TextStyle(
-                  color: AppColors.textDark,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Text('SứcKhỏe', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700)),
             ],
           ),
         ),
         const Spacer(),
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(
-              'Thứ Sáu, 12 Tháng',
-              style: TextStyle(color: AppColors.textGrey, fontSize: 14),
-            ),
-            Text(
-              'Tổng quan hằng ngày',
-              style: TextStyle(color: AppColors.textLight, fontSize: 13),
-            ),
+            Text('Chào, $name', style: const TextStyle(color: AppColors.textDark, fontSize: 14, fontWeight: FontWeight.w600)),
+            Text(dateText, style: const TextStyle(color: AppColors.textLight, fontSize: 13)),
           ],
         ),
       ],
     );
   }
 
-  Widget _calorieOverview({
-    required num goal,
-    required num used,
-    required num remaining,
-  }) {
-    final progress = goal == 0 ? 0.0 : (used / goal).clamp(0.0, 1.0);
+  Widget _calorieOverview({required num goal, required num used, required num remaining}) {
+    final progress = goal == 0 ? 0.0 : (used / goal).clamp(0.0, 1.0).toDouble();
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -265,38 +286,20 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Calo còn lại',
-                  style: TextStyle(color: AppColors.textGrey, fontSize: 14),
-                ),
+                const Text('Calo còn lại', style: TextStyle(color: AppColors.textGrey, fontSize: 14)),
                 const SizedBox(height: 8),
-                Text(
-                  '${remaining.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text('${remaining.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.textDark, fontSize: 24, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
-                Text(
-                  'Mục tiêu: ${goal.toStringAsFixed(0)} kcal · Đã dùng: ${used.toStringAsFixed(0)} kcal',
-                  style: const TextStyle(
-                    color: AppColors.textLight,
-                    fontSize: 12,
+                Text('Mục tiêu: ${goal.toStringAsFixed(0)} kcal · Đã dùng: ${used.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.textLight, fontSize: 12)),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 10,
+                    color: AppColors.primary,
+                    backgroundColor: AppColors.border,
                   ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    _calorieMini('Tiêu thụ', '${used.toStringAsFixed(0)} kcal'),
-                    _calorieMini(
-                      'Còn lại',
-                      '${remaining.toStringAsFixed(0)} kcal',
-                      green: true,
-                    ),
-                    _calorieMini('Mục tiêu', '${goal.toStringAsFixed(0)} kcal'),
-                  ],
                 ),
               ],
             ),
@@ -305,47 +308,15 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             width: 76,
             height: 76,
-            decoration: BoxDecoration(
-              color: AppColors.primarySoft,
-              borderRadius: BorderRadius.circular(40),
-            ),
-            child: const Center(
-              child: Text('☘️', style: TextStyle(fontSize: 36)),
-            ),
+            decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(40)),
+            child: const Center(child: Icon(Icons.eco, color: AppColors.primary, size: 38)),
           ),
         ],
       ),
     );
   }
 
-  Widget _calorieMini(String title, String value, {bool green = false}) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            title,
-            style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: green ? AppColors.primary : AppColors.textDark,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _macroCard({
-    required num protein,
-    required num carbs,
-    required num fat,
-  }) {
+  Widget _macroCard({required num protein, required num carbs, required num fat, required num proteinGoal, required num carbsGoal, required num fatGoal}) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: _cardDecoration(),
@@ -354,84 +325,74 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Phân bổ macro',
-                  style: TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              const Expanded(child: Text('Phân bổ macro', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600))),
               Container(
                 width: 46,
                 height: 46,
-                decoration: BoxDecoration(
-                  color: AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: const Center(
-                  child: Text('🚀', style: TextStyle(fontSize: 24)),
-                ),
+                decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(24)),
+                child: const Center(child: Icon(Icons.show_chart, color: AppColors.primary)),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Protein · Carbs · Fat',
-            style: TextStyle(color: AppColors.textGrey, fontSize: 13),
-          ),
+          const Text('Protein · Carbs · Fat', style: TextStyle(color: AppColors.textGrey, fontSize: 13)),
           const SizedBox(height: 20),
-          _macroLine(
-            'Protein',
-            '${protein.toStringAsFixed(0)}g',
-            0.30,
-            AppColors.primary,
-          ),
+          _macroLine('Protein', protein, proteinGoal, AppColors.primary),
           const SizedBox(height: 16),
-          _macroLine(
-            'Carbs',
-            '${carbs.toStringAsFixed(0)}g',
-            0.50,
-            AppColors.protein,
-          ),
+          _macroLine('Carbs', carbs, carbsGoal, AppColors.protein),
           const SizedBox(height: 16),
-          _macroLine(
-            'Fat',
-            '${fat.toStringAsFixed(0)}g',
-            0.20,
-            AppColors.warning,
-          ),
+          _macroLine('Fat', fat, fatGoal, AppColors.warning),
         ],
       ),
     );
   }
 
-  Widget _macroLine(String label, String value, double percent, Color color) {
+  Widget _macroLine(String label, num value, num goal, Color color) {
+    final percent = goal == 0 ? 0.0 : (value / goal).clamp(0.0, 1.0).toDouble();
     return Column(
       children: [
         Row(
           children: [
             Text(label, style: const TextStyle(color: AppColors.textGrey)),
             const Spacer(),
-            Text(
-              '${(percent * 100).toStringAsFixed(0)}% · $value',
-              style: const TextStyle(color: AppColors.textDark, fontSize: 13),
-            ),
+            Text('${(percent * 100).toStringAsFixed(0)}% · ${value.toStringAsFixed(0)}g/${goal.toStringAsFixed(0)}g', style: const TextStyle(color: AppColors.textDark, fontSize: 13)),
           ],
         ),
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(
-            value: percent,
-            minHeight: 9,
-            color: color,
-            backgroundColor: AppColors.border,
-          ),
+          child: LinearProgressIndicator(value: percent, minHeight: 9, color: color, backgroundColor: AppColors.border),
         ),
       ],
+    );
+  }
+
+  Widget _waterActivityCard({required num water, required num waterGoal}) {
+    final progress = waterGoal == 0 ? 0.0 : (water / waterGoal).clamp(0.0, 1.0).toDouble();
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: [
+          const Icon(Icons.water_drop, color: AppColors.protein, size: 34),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Nước uống hôm nay', style: TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Text('${water.toStringAsFixed(0)} / ${waterGoal.toStringAsFixed(0)} ml', style: const TextStyle(color: AppColors.textGrey)),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(value: progress, minHeight: 8, color: AppColors.protein, backgroundColor: AppColors.border),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -447,40 +408,32 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
             child: Row(
               children: [
-                const Text(
-                  'Nhật ký bữa ăn hôm nay',
-                  style: TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                const Text('Nhật ký bữa ăn hôm nay', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600)),
                 const Spacer(),
-                Text(
-                  '${meals.length} mục',
-                  style: const TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 13,
-                  ),
-                ),
+                Text('${meals.length} bữa', style: const TextStyle(color: AppColors.textGrey, fontSize: 13)),
               ],
             ),
           ),
-          if (meals.isEmpty) ...[
-            _mealRow('Sáng', '08:00 · 420 kcal', 'Đã ghi', true),
-            _mealRow('Trưa', '12:30 · 640 kcal', 'Đã ghi', true),
-            _mealRow('Tối', '19:00 · 520 kcal', 'Chưa', false),
-            _mealRow('Snack', '15:30 · 150 kcal', 'Đã ghi', true),
-          ] else
+          if (meals.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+              child: Column(
+                children: [
+                  const Icon(Icons.no_food, color: AppColors.textLight, size: 34),
+                  const SizedBox(height: 8),
+                  const Text('Chưa có bữa ăn nào hôm nay', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 5),
+                  const Text('Bấm “Thêm bữa ăn” để dữ liệu cập nhật ngay trên Home.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textGrey, fontSize: 13)),
+                ],
+              ),
+            )
+          else
             ...meals.map((m) {
-              final mealType = _mealLabel(m['meal_type']?.toString() ?? '');
-              final kcal = m['total_calories'] ?? 0;
-              return _mealRow(
-                mealType,
-                '${NumberFormatHelper.format(kcal)} kcal',
-                'Đã ghi',
-                true,
-              );
+              final map = Map<String, dynamic>.from(m);
+              final mealType = _mealLabel(map['meal_type']?.toString() ?? '');
+              final kcal = map['total_calories'] ?? 0;
+              final itemCount = map['items'] is List ? (map['items'] as List).length : (map['item_count'] ?? 0);
+              return _mealRow(mealType, '${NumberFormatHelper.format(kcal)} kcal · $itemCount món', 'Đã ghi', true);
             }),
         ],
       ),
@@ -491,55 +444,24 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
       padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text('🍲  🥘  +1 mục', style: TextStyle(fontSize: 13)),
+                Text(title, style: const TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(subtitle, style: const TextStyle(color: AppColors.textGrey, fontSize: 13)),
               ],
             ),
           ),
           Column(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: done ? AppColors.primary : Colors.grey.shade100,
-                  shape: BoxShape.circle,
-                ),
-              ),
+              Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? AppColors.primary : AppColors.textGrey, size: 18),
               const SizedBox(height: 6),
-              Text(
-                status,
-                style: TextStyle(
-                  color: done ? AppColors.primary : AppColors.warning,
-                  fontSize: 12,
-                ),
-              ),
+              Text(status, style: TextStyle(color: done ? AppColors.primary : AppColors.warning, fontSize: 12)),
             ],
           ),
         ],
@@ -551,13 +473,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.035),
-          blurRadius: 20,
-          offset: const Offset(0, 8),
-        ),
-      ],
+      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 20, offset: const Offset(0, 8))],
     );
   }
 
@@ -579,10 +495,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _bottomNav() {
     return Container(
       height: 66,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
+      decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
       child: Row(
         children: [
           _navItem(0, Icons.home, 'Trang chủ'),
@@ -596,7 +509,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _navItem(int index, IconData icon, String label) {
     final selected = _currentIndex == index;
-
     return Expanded(
       child: GestureDetector(
         onTap: () => _onNavTap(index),
@@ -604,19 +516,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: selected ? AppColors.primary : AppColors.textGrey,
-              size: 23,
-            ),
+            Icon(icon, color: selected ? AppColors.primary : AppColors.textGrey, size: 23),
             const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? AppColors.primary : AppColors.textGrey,
-                fontSize: 11,
-              ),
-            ),
+            Text(label, style: TextStyle(color: selected ? AppColors.primary : AppColors.textGrey, fontSize: 11)),
           ],
         ),
       ),

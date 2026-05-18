@@ -17,7 +17,7 @@ class ComingSoonScreen extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
           child: Column(
             children: [
               Row(
@@ -25,20 +25,26 @@ class ComingSoonScreen extends StatelessWidget {
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
-                      width: 38,
-                      height: 38,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.border),
                       ),
-                      child: const Icon(Icons.arrow_back),
+                      child: const Icon(
+                        Icons.arrow_back,
+                        size: 22,
+                        color: AppColors.textDark,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.textDark,
                         fontSize: 22,
@@ -48,39 +54,47 @@ class ComingSoonScreen extends StatelessWidget {
                   ),
                 ],
               ),
+
               const Spacer(),
+
               Container(
-                width: 110,
-                height: 110,
+                width: 118,
+                height: 118,
                 decoration: BoxDecoration(
                   color: AppColors.primarySoft,
-                  borderRadius: BorderRadius.circular(55),
+                  borderRadius: BorderRadius.circular(60),
                 ),
                 child: const Center(
-                  child: Text('🚧', style: TextStyle(fontSize: 52)),
+                  child: Text('🚧', style: TextStyle(fontSize: 56)),
                 ),
               ),
-              const SizedBox(height: 24),
+
+              const SizedBox(height: 26),
+
               Text(
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textDark,
-                  fontSize: 24,
+                  fontSize: 25,
                   fontWeight: FontWeight.w800,
                 ),
               ),
+
               const SizedBox(height: 12),
+
               Text(
                 description,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textGrey,
                   fontSize: 15,
-                  height: 1.4,
+                  height: 1.45,
                 ),
               ),
+
               const Spacer(),
+
               SizedBox(
                 width: double.infinity,
                 height: 54,

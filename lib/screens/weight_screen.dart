@@ -105,14 +105,14 @@ class _WeightScreenState extends State<WeightScreen> {
     if (_weights.isEmpty) return 72.4;
 
     final first = _weights.first;
-    return double.tryParse(first['weight'].toString()) ?? 72.4;
+    return double.tryParse((first['weight_kg'] ?? first['weight']).toString()) ?? 72.4;
   }
 
   double get _previousWeight {
     if (_weights.length < 2) return _currentWeight;
 
     final second = _weights[1];
-    return double.tryParse(second['weight'].toString()) ?? _currentWeight;
+    return double.tryParse((second['weight_kg'] ?? second['weight']).toString()) ?? _currentWeight;
   }
 
   double get _change {

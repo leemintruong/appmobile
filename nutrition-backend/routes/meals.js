@@ -2,43 +2,52 @@ const router = require('express').Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
 
+const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function round1(n) {
+  return Math.round(Number(n || 0) * 10) / 10;
+}
+
+function round2(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
+
 // GET /api/meals?date=2026-05-10
 router.get('/', auth, async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const date = req.query.date || today();
 
     const [rows] = await db.query(
-      `SELECT 
-          ml.id AS meal_log_id,
-          ml.meal_type,
-          f.id AS food_id,
-          f.name AS food_name,
-          f.serving_unit,
-          mli.quantity,
-          mli.total_calories,
-          mli.total_protein,
-          mli.total_carbs,
-          mli.total_fat
+      `SELECT ml.id AS meal_log_id, ml.meal_type, ml.log_date,
+              mli.id AS item_id, mli.food_id,
+              COALESCE(f.name, mli.custom_food_name) AS food_name,
+              mli.amount, mli.amount_unit,
+              mli.total_calories, mli.total_protein, mli.total_carbs, mli.total_fat,
+              mli.source
        FROM meal_logs ml
-       JOIN meal_log_items mli ON mli.meal_log_id = ml.id
-       JOIN foods f ON f.id = mli.food_id
-       WHERE ml.user_id = ? 
-         AND ml.log_date = ?
-       ORDER BY FIELD(ml.meal_type, 'breakfast', 'lunch', 'dinner', 'snack'), ml.id`,
+       LEFT JOIN meal_log_items mli ON mli.meal_log_id = ml.id
+       LEFT JOIN foods f ON f.id = mli.food_id
+       WHERE ml.user_id = ? AND ml.log_date = ?
+       ORDER BY FIELD(ml.meal_type, 'breakfast', 'lunch', 'dinner', 'snack'), ml.id, mli.id`,
       [req.user.id, date]
     );
 
     const grouped = {};
-    let total_calories = 0;
-    let total_protein = 0;
-    let total_carbs = 0;
-    let total_fat = 0;
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
 
     for (const r of rows) {
       if (!grouped[r.meal_type]) {
         grouped[r.meal_type] = {
           meal_log_id: r.meal_log_id,
           meal_type: r.meal_type,
+          log_date: r.log_date,
           items: [],
           total_calories: 0,
           total_protein: 0,
@@ -47,71 +56,68 @@ router.get('/', auth, async (req, res) => {
         };
       }
 
+      if (!r.item_id) continue;
+
       const item = {
+        item_id: r.item_id,
         food_id: r.food_id,
         food_name: r.food_name,
-        quantity: Number(r.quantity || 0),
-        serving_unit: r.serving_unit,
+        amount: Number(r.amount || 0),
+        amount_unit: r.amount_unit,
         total_calories: Number(r.total_calories || 0),
         total_protein: Number(r.total_protein || 0),
         total_carbs: Number(r.total_carbs || 0),
         total_fat: Number(r.total_fat || 0),
+        source: r.source,
       };
 
       grouped[r.meal_type].items.push(item);
-
       grouped[r.meal_type].total_calories += item.total_calories;
       grouped[r.meal_type].total_protein += item.total_protein;
       grouped[r.meal_type].total_carbs += item.total_carbs;
       grouped[r.meal_type].total_fat += item.total_fat;
 
-      total_calories += item.total_calories;
-      total_protein += item.total_protein;
-      total_carbs += item.total_carbs;
-      total_fat += item.total_fat;
+      totalCalories += item.total_calories;
+      totalProtein += item.total_protein;
+      totalCarbs += item.total_carbs;
+      totalFat += item.total_fat;
     }
 
     return res.json({
       success: true,
       date,
-      meals: Object.values(grouped),
-      total_calories: Math.round(total_calories * 10) / 10,
-      total_protein: Math.round(total_protein * 10) / 10,
-      total_carbs: Math.round(total_carbs * 10) / 10,
-      total_fat: Math.round(total_fat * 10) / 10,
+      meals: Object.values(grouped).map((meal) => ({
+        ...meal,
+        total_calories: round1(meal.total_calories),
+        total_protein: round1(meal.total_protein),
+        total_carbs: round1(meal.total_carbs),
+        total_fat: round1(meal.total_fat),
+      })),
+      total_calories: round1(totalCalories),
+      total_protein: round1(totalProtein),
+      total_carbs: round1(totalCarbs),
+      total_fat: round1(totalFat),
     });
   } catch (err) {
     console.error('GET MEALS ERROR:', err);
-
-    return res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi lấy bữa ăn',
-      error: err.message,
-    });
+    return res.status(500).json({ success: false, message: 'Lỗi server khi lấy bữa ăn' });
   }
 });
 
 // POST /api/meals
 router.post('/', auth, async (req, res) => {
-  const { meal_type, date, items } = req.body;
+  const mealType = req.body.meal_type;
+  const logDate = req.body.date || today();
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+  const replace = Boolean(req.body.replace);
 
-  if (!meal_type || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu dữ liệu bữa ăn',
-    });
+  if (!MEAL_TYPES.includes(mealType)) {
+    return res.status(400).json({ success: false, message: 'Loại bữa ăn không hợp lệ' });
   }
 
-  const validMealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
-
-  if (!validMealTypes.includes(meal_type)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Loại bữa ăn không hợp lệ',
-    });
+  if (!items.length) {
+    return res.status(400).json({ success: false, message: 'Bữa ăn phải có ít nhất 1 món' });
   }
-
-  const log_date = date || new Date().toISOString().slice(0, 10);
 
   const conn = await db.getConnection();
 
@@ -119,60 +125,84 @@ router.post('/', auth, async (req, res) => {
     await conn.beginTransaction();
 
     const [logResult] = await conn.query(
-      'INSERT INTO meal_logs (user_id, meal_type, log_date) VALUES (?, ?, ?)',
-      [req.user.id, meal_type, log_date]
+      `INSERT INTO meal_logs (user_id, meal_type, log_date)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), updated_at = CURRENT_TIMESTAMP`,
+      [req.user.id, mealType, logDate]
     );
 
-    const meal_log_id = logResult.insertId;
+    const mealLogId = logResult.insertId;
 
-    let total_calories = 0;
-    let total_protein = 0;
-    let total_carbs = 0;
-    let total_fat = 0;
+    if (replace) {
+      await conn.query('DELETE FROM meal_log_items WHERE meal_log_id = ?', [mealLogId]);
+    }
+
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
+    let insertedItems = 0;
 
     for (const item of items) {
-      const foodId = Number(item.food_id);
-      const quantity = Number(item.quantity);
+      const foodId = item.food_id ? Number(item.food_id) : null;
+      const amount = Number(item.amount ?? item.quantity);
+      if (!amount || amount <= 0) continue;
 
-      if (!foodId || !quantity || quantity <= 0) {
-        continue;
+      if (foodId) {
+        const [foods] = await conn.query(
+          `SELECT id, calories, protein, carbs, fat, base_amount, base_unit
+           FROM foods WHERE id = ? AND status = 'approved' LIMIT 1`,
+          [foodId]
+        );
+        if (!foods.length) continue;
+
+        const f = foods[0];
+        const baseAmount = Number(f.base_amount || 100);
+        const amountUnit = item.amount_unit || f.base_unit || 'g';
+        const itemCalories = round2(Number(f.calories || 0) * amount / baseAmount);
+        const itemProtein = round2(Number(f.protein || 0) * amount / baseAmount);
+        const itemCarbs = round2(Number(f.carbs || 0) * amount / baseAmount);
+        const itemFat = round2(Number(f.fat || 0) * amount / baseAmount);
+
+        await conn.query(
+          `INSERT INTO meal_log_items
+           (meal_log_id, food_id, custom_food_name, amount, amount_unit,
+            total_calories, total_protein, total_carbs, total_fat, source)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+          [mealLogId, foodId, amount, amountUnit, itemCalories, itemProtein, itemCarbs, itemFat, item.source || 'manual']
+        );
+
+        totalCalories += itemCalories;
+        totalProtein += itemProtein;
+        totalCarbs += itemCarbs;
+        totalFat += itemFat;
+        insertedItems += 1;
+      } else if (item.custom_food_name) {
+        const itemCalories = round2(item.total_calories);
+        const itemProtein = round2(item.total_protein);
+        const itemCarbs = round2(item.total_carbs);
+        const itemFat = round2(item.total_fat);
+
+        await conn.query(
+          `INSERT INTO meal_log_items
+           (meal_log_id, food_id, custom_food_name, amount, amount_unit,
+            total_calories, total_protein, total_carbs, total_fat, source)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [mealLogId, String(item.custom_food_name).trim(), amount, item.amount_unit || 'portion',
+           itemCalories, itemProtein, itemCarbs, itemFat, item.source || 'manual']
+        );
+
+        totalCalories += itemCalories;
+        totalProtein += itemProtein;
+        totalCarbs += itemCarbs;
+        totalFat += itemFat;
+        insertedItems += 1;
       }
+    }
 
-      const [foods] = await conn.query(
-        'SELECT calories, protein, carbs, fat FROM foods WHERE id = ?',
-        [foodId]
-      );
-
-      if (!foods.length) {
-        continue;
-      }
-
-      const f = foods[0];
-
-      const itemCalories = Math.round((Number(f.calories || 0) / 100) * quantity * 10) / 10;
-      const itemProtein = Math.round((Number(f.protein || 0) / 100) * quantity * 10) / 10;
-      const itemCarbs = Math.round((Number(f.carbs || 0) / 100) * quantity * 10) / 10;
-      const itemFat = Math.round((Number(f.fat || 0) / 100) * quantity * 10) / 10;
-
-      await conn.query(
-        `INSERT INTO meal_log_items
-          (meal_log_id, food_id, quantity, total_calories, total_protein, total_carbs, total_fat)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          meal_log_id,
-          foodId,
-          quantity,
-          itemCalories,
-          itemProtein,
-          itemCarbs,
-          itemFat,
-        ]
-      );
-
-      total_calories += itemCalories;
-      total_protein += itemProtein;
-      total_carbs += itemCarbs;
-      total_fat += itemFat;
+    if (!insertedItems) {
+      await conn.rollback();
+      return res.status(400).json({ success: false, message: 'Không có món ăn hợp lệ để lưu' });
     }
 
     await conn.commit();
@@ -180,60 +210,52 @@ router.post('/', auth, async (req, res) => {
     return res.status(201).json({
       success: true,
       message: 'Lưu bữa ăn thành công',
-      meal_log_id,
-      date: log_date,
-      total_calories: Math.round(total_calories * 10) / 10,
-      total_protein: Math.round(total_protein * 10) / 10,
-      total_carbs: Math.round(total_carbs * 10) / 10,
-      total_fat: Math.round(total_fat * 10) / 10,
+      meal_log_id: mealLogId,
+      date: logDate,
+      total_calories: round1(totalCalories),
+      total_protein: round1(totalProtein),
+      total_carbs: round1(totalCarbs),
+      total_fat: round1(totalFat),
     });
   } catch (err) {
     await conn.rollback();
-
     console.error('ADD MEAL ERROR:', err);
-
-    return res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi lưu bữa ăn',
-      error: err.message,
-    });
+    return res.status(500).json({ success: false, message: 'Lỗi server khi lưu bữa ăn' });
   } finally {
     conn.release();
   }
 });
 
-// DELETE /api/meals/:id
-router.delete('/:id', auth, async (req, res) => {
+// DELETE /api/meals/items/:itemId
+router.delete('/items/:itemId', auth, async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT id FROM meal_logs WHERE id = ? AND user_id = ?',
-      [req.params.id, req.user.id]
+      `SELECT mli.id
+       FROM meal_log_items mli
+       JOIN meal_logs ml ON ml.id = mli.meal_log_id
+       WHERE mli.id = ? AND ml.user_id = ? LIMIT 1`,
+      [req.params.itemId, req.user.id]
     );
 
-    if (!rows.length) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy bữa ăn',
-      });
-    }
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Không tìm thấy món ăn trong bữa' });
+    await db.query('DELETE FROM meal_log_items WHERE id = ?', [req.params.itemId]);
+    return res.json({ success: true, message: 'Đã xóa món ăn khỏi bữa' });
+  } catch (err) {
+    console.error('DELETE MEAL ITEM ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Lỗi server khi xóa món ăn' });
+  }
+});
 
-    await db.query(
-      'DELETE FROM meal_logs WHERE id = ? AND user_id = ?',
-      [req.params.id, req.user.id]
-    );
-
-    return res.json({
-      success: true,
-      message: 'Đã xóa bữa ăn',
-    });
+// DELETE /api/meals/:mealLogId
+router.delete('/:mealLogId', auth, async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT id FROM meal_logs WHERE id = ? AND user_id = ? LIMIT 1', [req.params.mealLogId, req.user.id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Không tìm thấy bữa ăn' });
+    await db.query('DELETE FROM meal_logs WHERE id = ? AND user_id = ?', [req.params.mealLogId, req.user.id]);
+    return res.json({ success: true, message: 'Đã xóa bữa ăn' });
   } catch (err) {
     console.error('DELETE MEAL ERROR:', err);
-
-    return res.status(500).json({
-      success: false,
-      message: 'Lỗi server khi xóa bữa ăn',
-      error: err.message,
-    });
+    return res.status(500).json({ success: false, message: 'Lỗi server khi xóa bữa ăn' });
   }
 });
 

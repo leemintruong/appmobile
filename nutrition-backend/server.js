@@ -13,6 +13,10 @@ app.use('/api/foods',   require('./routes/foods'));
 app.use('/api/meals',   require('./routes/meals'));
 app.use('/api/weights', require('./routes/weights'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/water', require('./routes/water'));
+app.use('/api/activities', require('./routes/activities'));
+app.use('/api/ai', require('./routes/ai'));
+app.use('/api/suggestions', require('./routes/suggestions'));
 
 // Health check
 app.get('/', (req, res) => res.json({ status: 'ok', message: 'Nutrition API running' }));

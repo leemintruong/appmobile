@@ -4,6 +4,9 @@ import '../services/api_service.dart';
 import 'login_screen.dart';
 import 'profile_setup_screen.dart';
 import 'weight_screen.dart';
+import 'water_screen.dart';
+import 'activity_screen.dart';
+import 'ai_scan_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   final Map<String, dynamic>? profile;
@@ -28,7 +31,7 @@ class ProfileScreen extends StatelessWidget {
     return profile!;
   }
 
-  String _getValue(List<String> keys, {String fallback = '--'}) {
+  String _getValue(List<String> keys, {String fallback = 'Chưa cập nhật'}) {
     for (final key in keys) {
       final value = _p[key];
 
@@ -48,12 +51,12 @@ class ProfileScreen extends StatelessWidget {
         return 'Giảm cân';
       case 'gain_weight':
         return 'Tăng cân';
-      case 'maintain':
-        return 'Giữ cân';
       case 'build_muscle':
         return 'Tăng cơ';
-      default:
+      case 'maintain':
         return 'Giữ cân';
+      default:
+        return 'Chưa thiết lập';
     }
   }
 
@@ -64,13 +67,13 @@ class ProfileScreen extends StatelessWidget {
       case 'sedentary':
         return 'Ít vận động';
       case 'light':
-        return 'Ít hoạt động';
+        return 'Nhẹ';
       case 'moderate':
-        return 'Hoạt động vừa';
+        return 'Vừa phải';
       case 'active':
-        return 'Rất năng động';
+        return 'Năng động';
       case 'very_active':
-        return 'Cường độ cao';
+        return 'Rất năng động';
       default:
         return 'Chưa cập nhật';
     }
@@ -95,11 +98,10 @@ class ProfileScreen extends StatelessWidget {
     final firstLetter = name.isNotEmpty ? name[0].toUpperCase() : 'U';
 
     final age = _getValue(['age']);
-    final height = _getValue(['height']);
-    final weight = _getValue(['weight']);
-    final dailyCalorieGoal = _getValue([
-      'daily_calorie_goal',
-    ], fallback: '2200');
+    final height = _getValue(['height_cm', 'height']);
+    final weight = _getValue(['current_weight_kg', 'weight']);
+    final dailyCalorieGoal = _getValue(['daily_calorie_goal'], fallback: '2200');
+    final dailyWaterGoal = _getValue(['daily_water_goal_ml'], fallback: '2000');
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -116,6 +118,7 @@ class ProfileScreen extends StatelessWidget {
               height: height,
               weight: weight,
               dailyCalorieGoal: dailyCalorieGoal,
+              dailyWaterGoal: dailyWaterGoal,
             ),
             const SizedBox(height: 16),
             _settingsCard(context),
@@ -145,11 +148,7 @@ class ProfileScreen extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.border),
           ),
-          child: const Icon(
-            Icons.settings,
-            color: AppColors.textDark,
-            size: 21,
-          ),
+          child: const Icon(Icons.settings, color: AppColors.textDark, size: 21),
         ),
       ],
     );
@@ -197,10 +196,7 @@ class ProfileScreen extends StatelessWidget {
                   email,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -224,6 +220,7 @@ class ProfileScreen extends StatelessWidget {
     required String height,
     required String weight,
     required String dailyCalorieGoal,
+    required String dailyWaterGoal,
   }) {
     return Container(
       padding: const EdgeInsets.all(18),
@@ -232,108 +229,56 @@ class ProfileScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Thông tin sức khỏe',
+            'Thông tin cá nhân',
             style: TextStyle(
               color: AppColors.textDark,
               fontSize: 17,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Row(
             children: [
-              _smallStat('Tuổi', age),
-              const SizedBox(width: 10),
-              _smallStat('Chiều cao', '$height cm'),
-              const SizedBox(width: 10),
-              _smallStat('Cân nặng', '$weight kg'),
+              Expanded(child: _statItem('Tuổi', age)),
+              Expanded(child: _statItem('Chiều cao', '$height cm')),
+              Expanded(child: _statItem('Cân nặng', '$weight kg')),
             ],
           ),
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(
-                child: _infoLine(
-                  title: 'Mức hoạt động',
-                  value: _activityLabel(),
-                  icon: Icons.directions_run,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _infoLine(
-                  title: 'Calo mục tiêu',
-                  value: '$dailyCalorieGoal kcal',
-                  icon: Icons.local_fire_department,
-                ),
-              ),
+              Expanded(child: _statItem('Calo/ngày', '$dailyCalorieGoal kcal')),
+              Expanded(child: _statItem('Nước/ngày', '$dailyWaterGoal ml')),
             ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Mức vận động: ${_activityLabel()}',
+            style: const TextStyle(color: AppColors.textGrey),
           ),
         ],
       ),
     );
   }
 
-  Widget _smallStat(String title, String value) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textDark,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _infoLine({
-    required String title,
-    required String value,
-    required IconData icon,
-  }) {
+  Widget _statItem(String label, String value) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.primarySoft,
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primary, size: 22),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
-          ),
-          const SizedBox(height: 5),
+          Text(label, style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
+          const SizedBox(height: 6),
           Text(
             value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: const TextStyle(
-              color: AppColors.primaryDark,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -343,30 +288,18 @@ class ProfileScreen extends StatelessWidget {
 
   Widget _settingsCard(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
       decoration: _cardDecoration(),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Cài đặt tài khoản',
-            style: TextStyle(
-              color: AppColors.textDark,
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
           _menuRow(
             icon: Icons.person_outline,
-            title: 'Chỉnh sửa hồ sơ',
-            subtitle: 'Tuổi, chiều cao, cân nặng',
+            title: 'Cập nhật hồ sơ',
+            subtitle: 'Tuổi, chiều cao, cân nặng, mục tiêu',
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => ProfileSetupScreen(profile: _p),
-                ),
+                MaterialPageRoute(builder: (_) => ProfileSetupScreen(profile: _p)),
               );
             },
           ),
@@ -382,16 +315,37 @@ class ProfileScreen extends StatelessWidget {
             },
           ),
           _menuRow(
-            icon: Icons.notifications_none,
-            title: 'Thông báo',
-            subtitle: 'Nhắc ghi bữa ăn và cân nặng',
-            onTap: () {},
+            icon: Icons.water_drop_outlined,
+            title: 'Theo dõi nước uống',
+            subtitle: 'Ghi lượng nước uống mỗi ngày',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WaterScreen()),
+              );
+            },
           ),
           _menuRow(
-            icon: Icons.straighten,
-            title: 'Đơn vị đo',
-            subtitle: 'kg / cm',
-            onTap: () {},
+            icon: Icons.directions_walk,
+            title: 'Theo dõi vận động',
+            subtitle: 'Hoạt động thể chất và calo tiêu hao',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ActivityScreen()),
+              );
+            },
+          ),
+          _menuRow(
+            icon: Icons.auto_awesome,
+            title: 'AI quét món ăn',
+            subtitle: 'Demo nhận diện món ăn bằng ảnh',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AiScanScreen()),
+              );
+            },
           ),
           _menuRow(
             icon: Icons.logout,
@@ -455,10 +409,7 @@ class ProfileScreen extends StatelessWidget {
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textGrey,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
                   ),
                 ],
               ),
