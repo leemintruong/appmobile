@@ -20,7 +20,28 @@ app.use('/api/suggestions', require('./routes/suggestions'));
 
 // Health check
 app.get('/', (req, res) => res.json({ status: 'ok', message: 'Nutrition API running' }));
+const db = require('./config/db');
 
+app.get('/api/debug/db', async (req, res) => {
+  try {
+    const [[databaseRow]] = await db.query('SELECT DATABASE() AS current_database');
+    const [usersTable] = await db.query("SHOW TABLES LIKE 'users'");
+    const [allTables] = await db.query('SHOW TABLES');
+
+    res.json({
+      success: true,
+      current_database: databaseRow.current_database,
+      has_users_table: usersTable.length > 0,
+      tables_count: allTables.length,
+      tables: allTables,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
