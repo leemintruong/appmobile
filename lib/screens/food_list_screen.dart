@@ -70,9 +70,9 @@ class _FoodListScreenState extends State<FoodListScreen> {
         _foods = [];
         _loading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không tải được thực phẩm: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không tải được thực phẩm: $e')));
     }
   }
 
@@ -106,7 +106,9 @@ class _FoodListScreenState extends State<FoodListScreen> {
 
     if (result['success'] == false) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result['message'] ?? 'Không cập nhật được yêu thích')),
+        SnackBar(
+          content: Text(result['message'] ?? 'Không cập nhật được yêu thích'),
+        ),
       );
       return;
     }
@@ -132,8 +134,16 @@ class _FoodListScreenState extends State<FoodListScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-              title: const Text('Thêm thực phẩm', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: const Text(
+                'Thêm thực phẩm',
+                style: TextStyle(
+                  color: AppColors.textDark,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -141,10 +151,13 @@ class _FoodListScreenState extends State<FoodListScreen> {
                     _dialogInput(nameCtrl, 'Tên món'),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<int?>(
-                      value: categoryId,
+                      initialValue: categoryId,
                       decoration: _dialogDecoration('Danh mục'),
                       items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('Không chọn')),
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('Không chọn'),
+                        ),
                         ..._categories.map((c) {
                           final map = Map<String, dynamic>.from(c);
                           return DropdownMenuItem<int?>(
@@ -156,29 +169,57 @@ class _FoodListScreenState extends State<FoodListScreen> {
                       onChanged: (v) => setDialogState(() => categoryId = v),
                     ),
                     const SizedBox(height: 10),
-                    _dialogInput(calCtrl, 'Calo theo đơn vị gốc', keyboardType: TextInputType.number),
+                    _dialogInput(
+                      calCtrl,
+                      'Calo theo đơn vị gốc',
+                      keyboardType: TextInputType.number,
+                    ),
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Expanded(child: _dialogInput(baseAmountCtrl, 'Số lượng gốc', keyboardType: TextInputType.number)),
+                        Expanded(
+                          child: _dialogInput(
+                            baseAmountCtrl,
+                            'Số lượng gốc',
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(child: _dialogInput(baseUnitCtrl, 'Đơn vị')),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    _dialogInput(proteinCtrl, 'Protein', keyboardType: TextInputType.number),
+                    _dialogInput(
+                      proteinCtrl,
+                      'Protein',
+                      keyboardType: TextInputType.number,
+                    ),
                     const SizedBox(height: 10),
-                    _dialogInput(carbsCtrl, 'Carbs', keyboardType: TextInputType.number),
+                    _dialogInput(
+                      carbsCtrl,
+                      'Carbs',
+                      keyboardType: TextInputType.number,
+                    ),
                     const SizedBox(height: 10),
-                    _dialogInput(fatCtrl, 'Fat', keyboardType: TextInputType.number),
+                    _dialogInput(
+                      fatCtrl,
+                      'Fat',
+                      keyboardType: TextInputType.number,
+                    ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Hủy'),
+                ),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
                   child: const Text('Lưu'),
                 ),
               ],
@@ -193,12 +234,16 @@ class _FoodListScreenState extends State<FoodListScreen> {
     final name = nameCtrl.text.trim();
     final calories = double.tryParse(calCtrl.text.trim());
     final baseAmount = double.tryParse(baseAmountCtrl.text.trim()) ?? 100;
-    final baseUnit = baseUnitCtrl.text.trim().isEmpty ? 'g' : baseUnitCtrl.text.trim();
+    final baseUnit = baseUnitCtrl.text.trim().isEmpty
+        ? 'g'
+        : baseUnitCtrl.text.trim();
 
     if (name.isEmpty || calories == null || calories < 0 || baseAmount <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tên món, calo hoặc đơn vị gốc không hợp lệ')),
+        const SnackBar(
+          content: Text('Tên món, calo hoặc đơn vị gốc không hợp lệ'),
+        ),
       );
       return;
     }
@@ -232,11 +277,18 @@ class _FoodListScreenState extends State<FoodListScreen> {
     return InputDecoration(
       labelText: label,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.border)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
     );
   }
 
-  Widget _dialogInput(TextEditingController controller, String label, {TextInputType? keyboardType}) {
+  Widget _dialogInput(
+    TextEditingController controller,
+    String label, {
+    TextInputType? keyboardType,
+  }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
@@ -269,14 +321,26 @@ class _FoodListScreenState extends State<FoodListScreen> {
               _categoryChips(),
               const SizedBox(height: 16),
               if (_loading)
-                const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(color: AppColors.primary)))
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  ),
+                )
               else if (_foods.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(24),
-                  child: Center(child: Text('Chưa có món ăn phù hợp', style: TextStyle(color: AppColors.textGrey))),
+                  child: Center(
+                    child: Text(
+                      'Chưa có món ăn phù hợp',
+                      style: TextStyle(color: AppColors.textGrey),
+                    ),
+                  ),
                 )
               else
-                ..._foods.map((food) => _foodTile(Map<String, dynamic>.from(food))),
+                ..._foods.map(
+                  (food) => _foodTile(Map<String, dynamic>.from(food)),
+                ),
             ],
           ),
         ),
@@ -291,13 +355,26 @@ class _FoodListScreenState extends State<FoodListScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Thư viện thực phẩm', style: TextStyle(color: AppColors.textDark, fontSize: 24, fontWeight: FontWeight.w800)),
+              Text(
+                'Thư viện thực phẩm',
+                style: TextStyle(
+                  color: AppColors.textDark,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               SizedBox(height: 4),
-              Text('Dữ liệu có nguồn và đơn vị rõ ràng', style: TextStyle(color: AppColors.textGrey, fontSize: 13)),
+              Text(
+                'Dữ liệu có nguồn và đơn vị rõ ràng',
+                style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+              ),
             ],
           ),
         ),
-        IconButton(onPressed: _loadInitial, icon: const Icon(Icons.refresh, color: AppColors.primary)),
+        IconButton(
+          onPressed: _loadInitial,
+          icon: const Icon(Icons.refresh, color: AppColors.primary),
+        ),
       ],
     );
   }
@@ -309,11 +386,23 @@ class _FoodListScreenState extends State<FoodListScreen> {
       decoration: InputDecoration(
         hintText: 'Tìm cơm, gà, phở, trứng...',
         prefixIcon: const Icon(Icons.search),
-        suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { _searchCtrl.clear(); _loadFoods(); }),
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: () {
+            _searchCtrl.clear();
+            _loadFoods();
+          },
+        ),
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: AppColors.border)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: AppColors.border)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
       ),
     );
   }
@@ -342,7 +431,10 @@ class _FoodListScreenState extends State<FoodListScreen> {
         selected: selected,
         label: Text(label),
         selectedColor: AppColors.primarySoft,
-        labelStyle: TextStyle(color: selected ? AppColors.primaryDark : AppColors.textGrey, fontWeight: FontWeight.w700),
+        labelStyle: TextStyle(
+          color: selected ? AppColors.primaryDark : AppColors.textGrey,
+          fontWeight: FontWeight.w700,
+        ),
         onSelected: (_) => _selectCategory(id),
       ),
     );
@@ -351,8 +443,14 @@ class _FoodListScreenState extends State<FoodListScreen> {
   Widget _foodTile(Map<String, dynamic> food) {
     final name = _str(food['name'], fallback: 'Món ăn');
     final kcal = _num(food['calories']);
-    final baseAmount = _num(food['base_amount'], fallback: _num(food['serving_size'], fallback: 100));
-    final baseUnit = _str(food['base_unit'], fallback: _str(food['serving_unit'], fallback: 'g'));
+    final baseAmount = _num(
+      food['base_amount'],
+      fallback: _num(food['serving_size'], fallback: 100),
+    );
+    final baseUnit = _str(
+      food['base_unit'],
+      fallback: _str(food['serving_unit'], fallback: 'g'),
+    );
     final category = _str(food['category'], fallback: 'Khác');
     final source = _str(food['source_name']);
     final verified = food['is_verified'] == 1 || food['is_verified'] == true;
@@ -361,7 +459,11 @@ class _FoodListScreenState extends State<FoodListScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.border),
+      ),
       child: Row(
         children: [
           const CircleAvatar(
@@ -373,20 +475,47 @@ class _FoodListScreenState extends State<FoodListScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w800)),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 5),
-                Text('$category · ${kcal.toStringAsFixed(0)} kcal / ${baseAmount.toStringAsFixed(0)}$baseUnit', style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
+                Text(
+                  '$category · ${kcal.toStringAsFixed(0)} kcal / ${baseAmount.toStringAsFixed(0)}$baseUnit',
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 12,
+                  ),
+                ),
                 const SizedBox(height: 5),
                 Row(
                   children: [
-                    Icon(verified ? Icons.verified : Icons.info_outline, size: 14, color: verified ? AppColors.primary : AppColors.textGrey),
+                    Icon(
+                      verified ? Icons.verified : Icons.info_outline,
+                      size: 14,
+                      color: verified ? AppColors.primary : AppColors.textGrey,
+                    ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        source.isNotEmpty ? source : (verified ? 'Dữ liệu đã kiểm chứng' : 'Dữ liệu người dùng'),
+                        source.isNotEmpty
+                            ? source
+                            : (verified
+                                  ? 'Dữ liệu đã kiểm chứng'
+                                  : 'Dữ liệu người dùng'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: verified ? AppColors.primaryDark : AppColors.textGrey, fontSize: 11),
+                        style: TextStyle(
+                          color: verified
+                              ? AppColors.primaryDark
+                              : AppColors.textGrey,
+                          fontSize: 11,
+                        ),
                       ),
                     ),
                   ],
@@ -396,7 +525,10 @@ class _FoodListScreenState extends State<FoodListScreen> {
           ),
           IconButton(
             onPressed: () => _toggleFavorite(food),
-            icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? AppColors.danger : AppColors.textGrey),
+            icon: Icon(
+              isFav ? Icons.favorite : Icons.favorite_border,
+              color: isFav ? AppColors.danger : AppColors.textGrey,
+            ),
           ),
         ],
       ),

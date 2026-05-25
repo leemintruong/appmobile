@@ -176,19 +176,27 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   String _goalDescription() {
     return switch (_goalType) {
-      'lose_weight' => 'Ứng dụng đề xuất mức calo thấp hơn nhu cầu duy trì để hỗ trợ giảm cân an toàn.',
-      'gain_weight' => 'Ứng dụng đề xuất tăng nhẹ calo mỗi ngày để hỗ trợ tăng cân lành mạnh.',
-      'build_muscle' => 'Ứng dụng đề xuất tăng nhẹ calo và ưu tiên protein để hỗ trợ tăng cơ.',
-      _ => 'Ứng dụng đề xuất mức calo gần với nhu cầu duy trì cân nặng hiện tại.',
+      'lose_weight' =>
+        'Ứng dụng đề xuất mức calo thấp hơn nhu cầu duy trì để hỗ trợ giảm cân an toàn.',
+      'gain_weight' =>
+        'Ứng dụng đề xuất tăng nhẹ calo mỗi ngày để hỗ trợ tăng cân lành mạnh.',
+      'build_muscle' =>
+        'Ứng dụng đề xuất tăng nhẹ calo và ưu tiên protein để hỗ trợ tăng cơ.',
+      _ =>
+        'Ứng dụng đề xuất mức calo gần với nhu cầu duy trì cân nặng hiện tại.',
     };
   }
 
   String _goalSuggestion() {
     return switch (_goalType) {
-      'lose_weight' => 'Gợi ý: Để giảm cân an toàn, hãy giảm nhẹ lượng calo mỗi ngày, ưu tiên thực phẩm giàu protein và hạn chế đồ chiên/ngọt.',
-      'gain_weight' => 'Gợi ý: Để tăng cân lành mạnh, hãy tăng nhẹ lượng calo mỗi ngày và bổ sung protein từ trứng, sữa, thịt nạc, cá hoặc đậu hũ.',
-      'build_muscle' => 'Gợi ý: Để tăng cơ, hãy ăn đủ protein, ngủ đủ và kết hợp tập luyện đều đặn thay vì chỉ tăng calo.',
-      _ => 'Gợi ý: Mục tiêu hiện tại giúp bạn duy trì cân nặng ổn định. Hãy ghi bữa ăn đều để app theo dõi chính xác hơn.',
+      'lose_weight' =>
+        'Gợi ý: Để giảm cân an toàn, hãy giảm nhẹ lượng calo mỗi ngày, ưu tiên thực phẩm giàu protein và hạn chế đồ chiên/ngọt.',
+      'gain_weight' =>
+        'Gợi ý: Để tăng cân lành mạnh, hãy tăng nhẹ lượng calo mỗi ngày và bổ sung protein từ trứng, sữa, thịt nạc, cá hoặc đậu hũ.',
+      'build_muscle' =>
+        'Gợi ý: Để tăng cơ, hãy ăn đủ protein, ngủ đủ và kết hợp tập luyện đều đặn thay vì chỉ tăng calo.',
+      _ =>
+        'Gợi ý: Mục tiêu hiện tại giúp bạn duy trì cân nặng ổn định. Hãy ghi bữa ăn đều để app theo dõi chính xác hơn.',
     };
   }
 
@@ -326,11 +334,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              _activityCard('light', 'Ít hoạt động'),
+              _activityCard('light', 'Dân văn phòng'),
               const SizedBox(width: 8),
-              _activityCard('moderate', 'Hoạt động\nvừa'),
+              _activityCard('moderate', 'Lao động nặng'),
               const SizedBox(width: 8),
-              _activityCard('active', 'Rất năng\nđộng'),
+              _activityCard('active', 'Vận động viên'),
             ],
           ),
 
@@ -765,7 +773,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         ),
         const Text(
           'Bạn có thể kéo để tăng/giảm mục tiêu nếu thấy chưa phù hợp với thói quen ăn uống.',
-          style: TextStyle(color: AppColors.textGrey, fontSize: 11.5, height: 1.3),
+          style: TextStyle(
+            color: AppColors.textGrey,
+            fontSize: 11.5,
+            height: 1.3,
+          ),
         ),
       ],
     );
@@ -844,9 +856,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               const SizedBox(height: 14),
               _infoRow('Năng lượng cơ bản', '${bmr.toStringAsFixed(0)} kcal'),
               const SizedBox(height: 8),
-              _infoRow('Nhu cầu duy trì ước tính', '${tdee.toStringAsFixed(0)} kcal'),
+              _infoRow(
+                'Nhu cầu duy trì ước tính',
+                '${tdee.toStringAsFixed(0)} kcal',
+              ),
               const SizedBox(height: 8),
-              _infoRow('Mục tiêu hiện tại', '${_calorieTarget.toStringAsFixed(0)} kcal / ngày'),
+              _infoRow(
+                'Mục tiêu hiện tại',
+                '${_calorieTarget.toStringAsFixed(0)} kcal / ngày',
+              ),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
