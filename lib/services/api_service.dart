@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:image_picker/image_picker.dart';
 
 class ApiService {
   // Android Emulator: http://10.0.2.2:3000/api
@@ -464,5 +466,32 @@ class ApiService {
       body: jsonEncode(body),
     );
     return _asMap(_decodeResponse(res), 'Không lưu được bữa ăn AI');
+  }
+
+  static Future<Map<String, dynamic>> scanMealWithImage(XFile image) async {
+    final bytes = await image.readAsBytes();
+    final base64Image = base64Encode(bytes);
+
+    final token = await getToken();
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/ai/scan-meal'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'image_base64': base64Image,
+        'mime_type': image.mimeType ?? 'image/jpeg',
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode >= 400) {
+      throw Exception(data['message'] ?? 'Không scan được ảnh món ăn');
+    }
+
+    return Map<String, dynamic>.from(data);
   }
 }

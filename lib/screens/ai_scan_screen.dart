@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import 'package:image_picker/image_picker.dart';
+
+final ImagePicker _picker = ImagePicker();
 
 class AiScanScreen extends StatefulWidget {
   const AiScanScreen({super.key});
@@ -24,6 +27,14 @@ class _AiScanScreenState extends State<AiScanScreen> {
   }
 
   Future<void> _scanMeal() async {
+    final image = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 75,
+      maxWidth: 1200,
+    );
+
+    if (image == null) return;
+
     setState(() {
       _scanning = true;
       _result = null;
@@ -32,7 +43,7 @@ class _AiScanScreenState extends State<AiScanScreen> {
     });
 
     try {
-      final data = await ApiService.scanMeal();
+      final data = await ApiService.scanMealWithImage(image);
 
       if (!mounted) return;
 
@@ -41,11 +52,15 @@ class _AiScanScreenState extends State<AiScanScreen> {
         _scanResultId = data['scan_result_id'] is int
             ? data['scan_result_id'] as int
             : int.tryParse(data['scan_result_id']?.toString() ?? '');
+
         _items = data['items'] is List ? data['items'] as List : [];
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi scan: $e')));
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi scan: $e')));
     } finally {
       if (mounted) setState(() => _scanning = false);
     }
@@ -73,14 +88,18 @@ class _AiScanScreenState extends State<AiScanScreen> {
 
       if (result['success'] == false) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Không lưu được bữa ăn AI')),
+          SnackBar(
+            content: Text(result['message'] ?? 'Không lưu được bữa ăn AI'),
+          ),
         );
       } else {
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -195,15 +214,22 @@ class _AiScanScreenState extends State<AiScanScreen> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
                     )
                   : const Icon(Icons.auto_awesome),
-              label: Text(_scanning ? 'AI đang phân tích...' : 'Quét món ăn mẫu'),
+              label: Text(
+                _scanning ? 'AI đang phân tích...' : 'Quét món ăn mẫu',
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(26),
+                ),
               ),
             ),
           ),
@@ -291,7 +317,10 @@ class _AiScanScreenState extends State<AiScanScreen> {
   Widget _macro(String label, num value, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
+        ),
         const SizedBox(height: 5),
         Text(
           '${value.toStringAsFixed(0)}g',
@@ -322,11 +351,17 @@ class _AiScanScreenState extends State<AiScanScreen> {
             return ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.restaurant, color: AppColors.primary),
-              title: Text(map['name']?.toString() ?? map['detected_food_name']?.toString() ?? 'Món ăn'),
+              title: Text(
+                map['name']?.toString() ??
+                    map['detected_food_name']?.toString() ??
+                    'Món ăn',
+              ),
               subtitle: Text(
                 '${_num(map['amount'] ?? map['estimated_amount']).toStringAsFixed(0)}${map['unit'] ?? map['estimated_unit'] ?? 'g'}',
               ),
-              trailing: Text('${_num(map['calories'] ?? map['estimated_calories']).toStringAsFixed(0)} kcal'),
+              trailing: Text(
+                '${_num(map['calories'] ?? map['estimated_calories']).toStringAsFixed(0)} kcal',
+              ),
             );
           }),
         ],
@@ -344,7 +379,9 @@ class _AiScanScreenState extends State<AiScanScreen> {
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(27),
+          ),
         ),
         child: Text(
           _saving ? 'Đang lưu...' : 'Xác nhận và lưu bữa ăn',
