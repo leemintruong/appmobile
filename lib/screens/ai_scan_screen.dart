@@ -29,8 +29,9 @@ class _AiScanScreenState extends State<AiScanScreen> {
   Future<void> _scanMeal() async {
     final image = await _picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 75,
-      maxWidth: 1200,
+      imageQuality: 55,
+      maxWidth: 900,
+      maxHeight: 900,
     );
 
     if (image == null) return;
