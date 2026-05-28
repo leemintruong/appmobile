@@ -2,14 +2,14 @@ const router = require('express').Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
 
-function today() { return new Date().toISOString().slice(0, 10); }
+const { normalizeDate } = require('../utils/date');
 
 // GET /api/activities?date=2026-05-10
 router.get('/', auth, async (req, res) => {
   try {
-    const date = req.query.date || today();
+    const date = normalizeDate(req.query.date);
     const [activities] = await db.query(
-      `SELECT id, activity_name, duration_minutes, calories_burned, log_date, created_at
+      `SELECT id, activity_name, duration_minutes, calories_burned, DATE_FORMAT(log_date, '%Y-%m-%d') AS log_date, created_at
        FROM activity_logs WHERE user_id = ? AND log_date = ? ORDER BY created_at`,
       [req.user.id, date]
     );
@@ -32,7 +32,7 @@ router.post('/', auth, async (req, res) => {
     const activityName = String(req.body.activity_name || '').trim();
     const durationMinutes = Number(req.body.duration_minutes);
     const caloriesBurned = Number(req.body.calories_burned || 0);
-    const logDate = req.body.date || today();
+    const logDate = normalizeDate(req.body.date);
     if (!activityName || !durationMinutes || durationMinutes <= 0) {
       return res.status(400).json({ success: false, message: 'Thông tin vận động không hợp lệ' });
     }

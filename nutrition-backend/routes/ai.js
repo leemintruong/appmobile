@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { GoogleGenAI } = require('@google/genai');
 const db = require('../config/db');
 const auth = require('../middleware/auth');
+const { normalizeDate } = require('../utils/date');
 
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
@@ -30,9 +31,7 @@ async function analyzeFoodImageWithGemini(imageBase64, mimeType = 'image/jpeg') 
     throw new Error('Missing GEMINI_API_KEY');
   }
 
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-  });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
   const prompt = `
 You are a nutrition estimation assistant.
@@ -87,9 +86,7 @@ Rules:
   });
 
   const text = response.text || '';
-  const jsonText = cleanJsonText(text);
-
-  return JSON.parse(jsonText);
+  return JSON.parse(cleanJsonText(text));
 }
 
 async function findMatchedFoodId(conn, detectedName) {
@@ -97,15 +94,12 @@ async function findMatchedFoodId(conn, detectedName) {
 
   const name = String(detectedName).trim();
 
-  const [exact] = await conn.query(
-    `SELECT id FROM foods WHERE name = ? LIMIT 1`,
-    [name]
-  );
-
+  const [exact] = await conn.query('SELECT id FROM foods WHERE name = ? LIMIT 1', [name]);
   if (exact.length) return exact[0].id;
 
   const [like] = await conn.query(
-    `SELECT id FROM foods
+    `SELECT id
+     FROM foods
      WHERE name LIKE ?
      ORDER BY id
      LIMIT 1`,
@@ -113,16 +107,71 @@ async function findMatchedFoodId(conn, detectedName) {
   );
 
   if (like.length) return like[0].id;
-
   return null;
 }
 
+async function createFoodFromAiItem(conn, userId, item, categoryId = null) {
+  if (item.matched_food_id) {
+    return {
+      food_id: item.matched_food_id,
+      already_exists: true,
+    };
+  }
+
+  const foodName = String(item.detected_food_name || 'Món AI').trim();
+
+  const [existing] = await conn.query(
+    `SELECT id
+     FROM foods
+     WHERE name = ?
+       AND (created_by = ? OR visibility IN ('system','public'))
+     LIMIT 1`,
+    [foodName, userId]
+  );
+
+  if (existing.length) {
+    await conn.query('UPDATE ai_scan_result_items SET matched_food_id = ? WHERE id = ?', [existing[0].id, item.id]);
+
+    return {
+      food_id: existing[0].id,
+      already_exists: true,
+    };
+  }
+
+  const amount = Number(item.estimated_amount || 1);
+  const unit = item.estimated_unit || 'serving';
+
+  const [inserted] = await conn.query(
+    `INSERT INTO foods
+     (category_id, name, brand, calories, protein, carbs, fat,
+      base_amount, base_unit, serving_size, serving_unit,
+      created_by, visibility, status, is_verified)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'private', 'approved', 0)`,
+    [
+      categoryId,
+      foodName,
+      'AI estimate',
+      round2(item.estimated_calories),
+      round2(item.estimated_protein),
+      round2(item.estimated_carbs),
+      round2(item.estimated_fat),
+      amount > 0 ? round2(amount) : 1,
+      unit,
+      amount > 0 ? round2(amount) : 1,
+      unit,
+      userId,
+    ]
+  );
+
+  await conn.query('UPDATE ai_scan_result_items SET matched_food_id = ? WHERE id = ?', [inserted.insertId, item.id]);
+
+  return {
+    food_id: inserted.insertId,
+    already_exists: false,
+  };
+}
+
 // POST /api/ai/scan-meal
-// Body:
-// {
-//   "image_base64": "...",
-//   "mime_type": "image/jpeg"
-// }
 router.post('/scan-meal', auth, async (req, res) => {
   const conn = await db.getConnection();
 
@@ -148,9 +197,7 @@ router.post('/scan-meal', auth, async (req, res) => {
     );
 
     const mealImageId = imageResult.insertId;
-
     const aiResult = await analyzeFoodImageWithGemini(imageBase64, mimeType);
-
     const items = Array.isArray(aiResult.items) ? aiResult.items : [];
 
     const estimatedCalories = round2(aiResult.estimated_calories);
@@ -185,7 +232,6 @@ router.post('/scan-meal', auth, async (req, res) => {
 
       const estimatedAmount = round2(item.estimated_amount || 1);
       const estimatedUnit = item.estimated_unit || 'serving';
-
       const itemCalories = round2(item.estimated_calories);
       const itemProtein = round2(item.estimated_protein);
       const itemCarbs = round2(item.estimated_carbs);
@@ -214,7 +260,9 @@ router.post('/scan-meal', auth, async (req, res) => {
 
       savedItems.push({
         id: saved.insertId,
+        item_id: saved.insertId,
         detected_food_name: detectedName,
+        name: detectedName,
         matched_food_id: matchedFoodId,
         estimated_amount: estimatedAmount,
         estimated_unit: estimatedUnit,
@@ -223,6 +271,7 @@ router.post('/scan-meal', auth, async (req, res) => {
         estimated_carbs: itemCarbs,
         estimated_fat: itemFat,
         confidence_score: itemConfidence,
+        can_add_to_food_library: !matchedFoodId,
       });
     }
 
@@ -243,7 +292,6 @@ router.post('/scan-meal', auth, async (req, res) => {
     });
   } catch (err) {
     await conn.rollback();
-
     console.error('AI SCAN ERROR:', err);
 
     return res.status(500).json({
@@ -262,20 +310,32 @@ router.get('/scan-results/:id', auth, async (req, res) => {
     const [results] = await db.query(
       `SELECT *
        FROM ai_scan_results
-       WHERE id = ? AND user_id = ?
+       WHERE id = ?
+         AND user_id = ?
        LIMIT 1`,
       [req.params.id, req.user.id]
     );
 
     if (!results.length) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy kết quả AI',
-      });
+      return res.status(404).json({ success: false, message: 'Không tìm thấy kết quả AI' });
     }
 
     const [items] = await db.query(
-      `SELECT *
+      `SELECT
+          id,
+          id AS item_id,
+          ai_scan_result_id,
+          detected_food_name,
+          detected_food_name AS name,
+          matched_food_id,
+          estimated_amount,
+          estimated_unit,
+          estimated_calories,
+          estimated_protein,
+          estimated_carbs,
+          estimated_fat,
+          confidence_score,
+          CASE WHEN matched_food_id IS NULL THEN 1 ELSE 0 END AS can_add_to_food_library
        FROM ai_scan_result_items
        WHERE ai_scan_result_id = ?
        ORDER BY id`,
@@ -289,11 +349,56 @@ router.get('/scan-results/:id', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('GET AI RESULT ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Lỗi server khi lấy kết quả AI' });
+  }
+});
+
+// POST /api/ai/scan-results/:scanResultId/items/:itemId/add-to-foods
+router.post('/scan-results/:scanResultId/items/:itemId/add-to-foods', auth, async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT item.*
+       FROM ai_scan_result_items item
+       JOIN ai_scan_results result ON result.id = item.ai_scan_result_id
+       WHERE item.id = ?
+         AND item.ai_scan_result_id = ?
+         AND result.user_id = ?
+       LIMIT 1`,
+      [req.params.itemId, req.params.scanResultId, req.user.id]
+    );
+
+    if (!rows.length) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, message: 'Không tìm thấy món AI cần thêm vào thư viện' });
+    }
+
+    const created = await createFoodFromAiItem(conn, req.user.id, rows[0], req.body.category_id || null);
+
+    await conn.commit();
+
+    return res.status(created.already_exists ? 200 : 201).json({
+      success: true,
+      message: created.already_exists
+        ? 'Món đã có trong thư viện thực phẩm'
+        : 'Đã thêm món AI vào thư viện thực phẩm',
+      food_id: created.food_id,
+      already_exists: created.already_exists,
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error('AI ADD FOOD ERROR:', err);
 
     return res.status(500).json({
       success: false,
-      message: 'Lỗi server khi lấy kết quả AI',
+      message: 'Lỗi server khi thêm món AI vào thư viện',
+      error: process.env.NODE_ENV === 'production' ? undefined : err.message,
     });
+  } finally {
+    conn.release();
   }
 });
 
@@ -303,25 +408,24 @@ router.post('/scan-results/:id/confirm', auth, async (req, res) => {
 
   try {
     const mealType = req.body.meal_type || 'breakfast';
-    const logDate = req.body.date || new Date().toISOString().slice(0, 10);
+    const logDate = normalizeDate(req.body.date);
+    const createUnmatchedFoods = Boolean(req.body.create_unmatched_foods);
 
     await conn.beginTransaction();
 
     const [results] = await conn.query(
       `SELECT *
        FROM ai_scan_results
-       WHERE id = ? AND user_id = ? AND status = 'draft'
+       WHERE id = ?
+         AND user_id = ?
+         AND status = 'draft'
        LIMIT 1`,
       [req.params.id, req.user.id]
     );
 
     if (!results.length) {
       await conn.rollback();
-
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy kết quả AI cần xác nhận',
-      });
+      return res.status(404).json({ success: false, message: 'Không tìm thấy kết quả AI cần xác nhận' });
     }
 
     const [mealLogResult] = await conn.query(
@@ -340,7 +444,17 @@ router.post('/scan-results/:id/confirm', auth, async (req, res) => {
       [req.params.id]
     );
 
+    const createdFoods = [];
+
     for (const item of items) {
+      let foodId = item.matched_food_id;
+
+      if (!foodId && createUnmatchedFoods) {
+        const created = await createFoodFromAiItem(conn, req.user.id, item, req.body.category_id || null);
+        foodId = created.food_id;
+        if (!created.already_exists) createdFoods.push(foodId);
+      }
+
       await conn.query(
         `INSERT INTO meal_log_items
          (meal_log_id, food_id, custom_food_name, amount, amount_unit,
@@ -348,8 +462,8 @@ router.post('/scan-results/:id/confirm', auth, async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?)`,
         [
           mealLogId,
-          item.matched_food_id,
-          item.matched_food_id ? null : item.detected_food_name,
+          foodId || null,
+          foodId ? null : item.detected_food_name,
           item.estimated_amount || 1,
           item.estimated_unit || 'serving',
           item.estimated_calories || 0,
@@ -361,15 +475,8 @@ router.post('/scan-results/:id/confirm', auth, async (req, res) => {
       );
     }
 
-    await conn.query(
-      `UPDATE ai_scan_results SET status = 'confirmed' WHERE id = ?`,
-      [req.params.id]
-    );
-
-    await conn.query(
-      `UPDATE meal_images SET status = 'confirmed' WHERE id = ?`,
-      [results[0].meal_image_id]
-    );
+    await conn.query('UPDATE ai_scan_results SET status = "confirmed" WHERE id = ?', [req.params.id]);
+    await conn.query('UPDATE meal_images SET status = "confirmed" WHERE id = ?', [results[0].meal_image_id]);
 
     await conn.commit();
 
@@ -377,15 +484,17 @@ router.post('/scan-results/:id/confirm', auth, async (req, res) => {
       success: true,
       message: 'Đã xác nhận và lưu bữa ăn từ AI',
       meal_log_id: mealLogId,
+      created_food_ids: createdFoods,
+      date: logDate,
     });
   } catch (err) {
     await conn.rollback();
-
     console.error('CONFIRM AI RESULT ERROR:', err);
 
     return res.status(500).json({
       success: false,
       message: 'Lỗi server khi xác nhận kết quả AI',
+      error: process.env.NODE_ENV === 'production' ? undefined : err.message,
     });
   } finally {
     conn.release();

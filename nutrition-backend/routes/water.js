@@ -2,14 +2,14 @@ const router = require('express').Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
 
-function today() { return new Date().toISOString().slice(0, 10); }
+const { normalizeDate } = require('../utils/date');
 
 // GET /api/water?date=2026-05-10
 router.get('/', auth, async (req, res) => {
   try {
-    const date = req.query.date || today();
+    const date = normalizeDate(req.query.date);
     const [logs] = await db.query(
-      `SELECT id, amount_ml, log_date, created_at
+      `SELECT id, amount_ml, DATE_FORMAT(log_date, '%Y-%m-%d') AS log_date, created_at
        FROM water_logs WHERE user_id = ? AND log_date = ? ORDER BY created_at`,
       [req.user.id, date]
     );
@@ -33,7 +33,7 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const amountMl = Number(req.body.amount_ml);
-    const logDate = req.body.date || today();
+    const logDate = normalizeDate(req.body.date);
     if (!amountMl || amountMl <= 0) return res.status(400).json({ success: false, message: 'Lượng nước không hợp lệ' });
     const [result] = await db.query('INSERT INTO water_logs (user_id, amount_ml, log_date) VALUES (?, ?, ?)', [req.user.id, amountMl, logDate]);
     return res.status(201).json({ success: true, message: 'Đã lưu lượng nước uống', id: result.insertId, amount_ml: amountMl, log_date: logDate });

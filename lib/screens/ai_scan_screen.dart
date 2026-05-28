@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../services/app_events.dart';
 import 'package:image_picker/image_picker.dart';
 
 final ImagePicker _picker = ImagePicker();
@@ -26,12 +27,12 @@ class _AiScanScreenState extends State<AiScanScreen> {
     return num.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
-  Future<void> _scanMeal() async {
+  Future<void> _scanMeal({ImageSource source = ImageSource.camera}) async {
     final image = await _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 55,
-      maxWidth: 900,
-      maxHeight: 900,
+      source: source,
+      imageQuality: 45,
+      maxWidth: 700,
+      maxHeight: 700,
     );
 
     if (image == null) return;
@@ -67,6 +68,60 @@ class _AiScanScreenState extends State<AiScanScreen> {
     }
   }
 
+  Future<void> _addItemToFoodLibrary(Map<String, dynamic> item) async {
+    final scanId = _scanResultId;
+    final itemId = int.tryParse(
+      '${item['id'] ?? item['ai_scan_result_item_id'] ?? item['item_id'] ?? ''}',
+    );
+
+    if (scanId == null || itemId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không xác định được món AI để thêm')),
+      );
+      return;
+    }
+
+    try {
+      final result = await ApiService.addAIResultItemToFoods(
+        scanResultId: scanId,
+        itemId: itemId,
+      );
+
+      if (!mounted) return;
+
+      if (result['success'] == false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['message'] ?? 'Không thêm được vào thư viện')),
+        );
+        return;
+      }
+
+      final food = result['food'];
+      final newFoodId = result['food_id'] ??
+          result['id'] ??
+          (food is Map ? food['id'] : null);
+
+      setState(() {
+        for (final raw in _items) {
+          if (raw is Map && '${raw['id'] ?? raw['ai_scan_result_item_id'] ?? raw['item_id']}' == '$itemId') {
+            raw['matched_food_id'] = newFoodId ?? raw['matched_food_id'] ?? 1;
+          }
+        }
+      });
+
+      AppEvents.notifyDataChanged();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã thêm món AI vào thư viện thực phẩm')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi thêm vào thư viện: $e')),
+      );
+    }
+  }
+
   Future<void> _confirm() async {
     final id = _scanResultId;
 
@@ -83,6 +138,7 @@ class _AiScanScreenState extends State<AiScanScreen> {
       final result = await ApiService.confirmScanResult(
         id,
         mealType: _mealType,
+        date: ApiService.todayString(),
       );
 
       if (!mounted) return;
@@ -94,6 +150,7 @@ class _AiScanScreenState extends State<AiScanScreen> {
           ),
         );
       } else {
+        AppEvents.notifyDataChanged();
         Navigator.pop(context, true);
       }
     } catch (e) {
@@ -192,7 +249,7 @@ class _AiScanScreenState extends State<AiScanScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Demo AI Scanner',
+            'AI Scanner thật',
             style: TextStyle(
               color: AppColors.textDark,
               fontSize: 18,
@@ -201,38 +258,59 @@ class _AiScanScreenState extends State<AiScanScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Bản này dùng mock AI để demo luồng: scan ảnh → nhận calo/macro → xác nhận lưu bữa ăn.',
+            'Chụp hoặc chọn ảnh món ăn. AI sẽ ước tính calo/macro, sau đó bạn kiểm tra và xác nhận trước khi lưu.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textGrey, height: 1.4),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: _scanning ? null : _scanMeal,
-              icon: _scanning
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: _scanning ? null : () => _scanMeal(source: ImageSource.camera),
+                    icon: _scanning
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.photo_camera),
+                    label: Text(_scanning ? 'Đang phân tích...' : 'Chụp ảnh'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(26),
                       ),
-                    )
-                  : const Icon(Icons.auto_awesome),
-              label: Text(
-                _scanning ? 'AI đang phân tích...' : 'Quét món ăn mẫu',
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(26),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: _scanning ? null : () => _scanMeal(source: ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library),
+                    label: const Text('Chọn ảnh'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(26),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -346,22 +424,80 @@ class _AiScanScreenState extends State<AiScanScreen> {
               fontWeight: FontWeight.w800,
             ),
           ),
+          const SizedBox(height: 6),
+          const Text(
+            'Nếu món chưa có trong thư viện, bạn có thể thêm để dùng lại sau.',
+            style: TextStyle(color: AppColors.textGrey, fontSize: 12),
+          ),
           const SizedBox(height: 12),
           ..._items.map((item) {
             final map = Map<String, dynamic>.from(item as Map);
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.restaurant, color: AppColors.primary),
-              title: Text(
-                map['name']?.toString() ??
-                    map['detected_food_name']?.toString() ??
-                    'Món ăn',
+            final name = map['name']?.toString() ??
+                map['detected_food_name']?.toString() ??
+                'Món ăn';
+            final amount = _num(map['amount'] ?? map['estimated_amount']);
+            final unit = map['unit'] ?? map['estimated_unit'] ?? 'g';
+            final kcal = _num(map['calories'] ?? map['estimated_calories']);
+            final matchedFoodId = int.tryParse('${map['matched_food_id'] ?? map['food_id'] ?? ''}');
+            final canAdd = matchedFoodId == null || matchedFoodId <= 0;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(16),
               ),
-              subtitle: Text(
-                '${_num(map['amount'] ?? map['estimated_amount']).toStringAsFixed(0)}${map['unit'] ?? map['estimated_unit'] ?? 'g'}',
-              ),
-              trailing: Text(
-                '${_num(map['calories'] ?? map['estimated_calories']).toStringAsFixed(0)} kcal',
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        canAdd ? Icons.auto_awesome : Icons.check_circle,
+                        color: canAdd ? AppColors.warning : AppColors.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${kcal.toStringAsFixed(0)} kcal',
+                        style: const TextStyle(
+                          color: AppColors.textGrey,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${amount.toStringAsFixed(amount % 1 == 0 ? 0 : 1)}$unit',
+                          style: const TextStyle(color: AppColors.textGrey),
+                        ),
+                      ),
+                      if (canAdd)
+                        TextButton.icon(
+                          onPressed: () => _addItemToFoodLibrary(map),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Thêm vào thư viện'),
+                        )
+                      else
+                        const Text(
+                          'Đã có trong thư viện',
+                          style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
+                        ),
+                    ],
+                  ),
+                ],
               ),
             );
           }),

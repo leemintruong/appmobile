@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
+const { normalizeDate } = require('../utils/date');
 
 // GET /api/weights?from=2026-04-01&to=2026-05-10
 router.get('/', auth, async (req, res) => {
@@ -13,7 +14,7 @@ router.get('/', auth, async (req, res) => {
     if (to) { where += ' AND log_date <= ?'; params.push(to); }
 
     const [rows] = await db.query(
-      `SELECT id, weight_kg, weight_kg AS weight, log_date, note
+      `SELECT id, weight_kg, weight_kg AS weight, DATE_FORMAT(log_date, '%Y-%m-%d') AS log_date, note
        FROM weight_logs ${where}
        ORDER BY log_date ASC`,
       params
@@ -30,7 +31,7 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const weightKg = Number(req.body.weight_kg ?? req.body.weight);
-    const logDate = req.body.date || new Date().toISOString().slice(0, 10);
+    const logDate = normalizeDate(req.body.date);
     const note = req.body.note || null;
 
     if (!weightKg || weightKg <= 0) {

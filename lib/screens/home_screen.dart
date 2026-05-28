@@ -587,73 +587,164 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             )
           else
             ...meals.map((m) {
-              final map = Map<String, dynamic>.from(m);
-              final mealType = _mealLabel(map['meal_type']?.toString() ?? '');
-              final kcal = map['total_calories'] ?? 0;
-              final itemCount = map['items'] is List
-                  ? (map['items'] as List).length
-                  : (map['item_count'] ?? 0);
-              return _mealRow(
-                mealType,
-                '${NumberFormatHelper.format(kcal)} kcal · $itemCount món',
-                'Đã ghi',
-                true,
-              );
+              final map = Map<String, dynamic>.from(m as Map);
+              return _mealDetailTile(map);
             }),
         ],
       ),
     );
   }
 
-  Widget _mealRow(String title, String subtitle, String status, bool done) {
+  List<dynamic> _itemsOfMeal(Map<String, dynamic> meal) {
+    final items = meal['items'];
+    if (items is List) return items;
+
+    final details = meal['details'];
+    if (details is List) return details;
+
+    final mealItems = meal['meal_items'];
+    if (mealItems is List) return mealItems;
+
+    return [];
+  }
+
+  String _itemName(Map<String, dynamic> item) {
+    return (item['food_name'] ??
+            item['name'] ??
+            item['custom_food_name'] ??
+            item['detected_food_name'] ??
+            'Món ăn')
+        .toString();
+  }
+
+  String _amountText(Map<String, dynamic> item) {
+    final amount = _parseNumber(item['amount'] ?? item['quantity']);
+    final unit = (item['amount_unit'] ?? item['unit'] ?? item['estimated_unit'] ?? '').toString();
+
+    if (amount <= 0) return unit.isEmpty ? '' : unit;
+    return '${amount.toStringAsFixed(amount % 1 == 0 ? 0 : 1)}$unit';
+  }
+
+  Widget _mealDetailTile(Map<String, dynamic> meal) {
+    final mealType = _mealLabel(meal['meal_type']?.toString() ?? '');
+    final kcal = _parseNumber(meal['total_calories']);
+    final protein = _parseNumber(meal['total_protein']);
+    final carbs = _parseNumber(meal['total_carbs']);
+    final fat = _parseNumber(meal['total_fat']);
+    final items = _itemsOfMeal(meal);
+    final itemCount = items.isNotEmpty ? items.length : _parseNumber(meal['item_count']);
+
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
-      padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: AppColors.textGrey,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: true,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          leading: const Icon(Icons.check_circle, color: AppColors.primary, size: 22),
+          title: Text(
+            mealType,
+            style: const TextStyle(
+              color: AppColors.textDark,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          Column(
-            children: [
-              Icon(
-                done ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: done ? AppColors.primary : AppColors.textGrey,
-                size: 18,
+          subtitle: Text(
+            '${NumberFormatHelper.format(kcal)} kcal · ${NumberFormatHelper.format(itemCount)} món',
+            style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
+          ),
+          trailing: const Icon(Icons.expand_more, color: AppColors.textGrey),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(height: 6),
-              Text(
-                status,
-                style: TextStyle(
-                  color: done ? AppColors.primary : AppColors.warning,
-                  fontSize: 12,
-                ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      _miniMacro('P', protein, AppColors.protein),
+                      _miniMacro('C', carbs, AppColors.carbs),
+                      _miniMacro('F', fat, AppColors.fat),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (items.isEmpty)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Bữa này chưa có chi tiết món.',
+                        style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+                      ),
+                    )
+                  else
+                    ...items.map((raw) {
+                      final item = Map<String, dynamic>.from(raw as Map);
+                      return _mealItemRow(item);
+                    }),
+                ],
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _miniMacro(String label, num value, Color color) {
+    return Expanded(
+      child: Row(
+        children: [
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 5),
+          Text('$label ${value.toStringAsFixed(0)}g', style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  Widget _mealItemRow(Map<String, dynamic> item) {
+    final name = _itemName(item);
+    final amount = _amountText(item);
+    final kcal = _parseNumber(item['total_calories'] ?? item['estimated_calories'] ?? item['calories']);
+    final source = (item['source'] ?? '').toString();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            source == 'ai' ? Icons.auto_awesome : Icons.restaurant,
+            color: source == 'ai' ? AppColors.warning : AppColors.primary,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              amount.isEmpty ? name : '$name · $amount',
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            '${kcal.toStringAsFixed(0)} kcal',
+            style: const TextStyle(
+              color: AppColors.textGrey,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),

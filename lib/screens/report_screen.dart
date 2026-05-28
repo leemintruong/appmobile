@@ -14,6 +14,7 @@ class _ReportScreenState extends State<ReportScreen> {
   bool _loading = true;
   int _lastEventVersion = 0;
 
+  DateTime _selectedDate = DateTime.now();
   Map<String, dynamic> _daily = {};
   Map<String, dynamic> _weekly = {};
 
@@ -43,9 +44,13 @@ class _ReportScreenState extends State<ReportScreen> {
     if (!silent && mounted) setState(() => _loading = true);
 
     try {
+      final date = ApiService.formatDateLocal(_selectedDate);
+      final start = ApiService.formatDateLocal(_selectedDate.subtract(const Duration(days: 6)));
+      final end = date;
+
       final results = await Future.wait([
-        ApiService.getDailyReport(),
-        ApiService.getWeeklyReport(),
+        ApiService.getDailyReport(date: date),
+        ApiService.getWeeklyReport(start: start, end: end),
       ]);
 
       if (!mounted) return;
@@ -66,26 +71,29 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Map<String, dynamic> _normalize(dynamic data) => ApiService.normalizeObject(data);
 
-  num _readNumber(Map<String, dynamic> map, List<String> keys) {
-    for (final key in keys) {
-      final value = map[key];
-      if (value is num) return value;
-      if (value != null) {
-        final parsed = num.tryParse(value.toString());
-        if (parsed != null) return parsed;
-      }
+  num _num(dynamic value, {num fallback = 0}) {
+    if (value is num) return value;
+    if (value != null) {
+      final parsed = num.tryParse(value.toString());
+      if (parsed != null) return parsed;
     }
+    return fallback;
+  }
 
-    for (final nestedKey in ['nutrition', 'goal', 'average']) {
-      final nested = map[nestedKey];
-      if (nested is Map<String, dynamic>) {
+  num _readNumber(Map<String, dynamic> map, List<String> keys) {
+    final sources = <dynamic>[
+      map,
+      map['nutrition'],
+      map['goal'],
+      map['average'],
+      map['summary'],
+      map['data'],
+    ];
+
+    for (final source in sources) {
+      if (source is Map) {
         for (final key in keys) {
-          final value = nested[key];
-          if (value is num) return value;
-          if (value != null) {
-            final parsed = num.tryParse(value.toString());
-            if (parsed != null) return parsed;
-          }
+          if (source.containsKey(key)) return _num(source[key]);
         }
       }
     }
@@ -96,6 +104,38 @@ class _ReportScreenState extends State<ReportScreen> {
   List<dynamic> _weeklyDays() {
     final days = _weekly['days'];
     return days is List ? days : [];
+  }
+
+  List<dynamic> _dailyMeals() {
+    final meals = _daily['meals'];
+    if (meals is List) return meals;
+
+    final details = _daily['meal_details'];
+    if (details is List) return details;
+
+    return [];
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      helpText: 'Chọn ngày báo cáo',
+    );
+
+    if (picked == null) return;
+
+    setState(() => _selectedDate = picked);
+    await _loadReport();
+  }
+
+  Future<void> _shiftDay(int delta) async {
+    setState(() {
+      _selectedDate = _selectedDate.add(Duration(days: delta));
+    });
+    await _loadReport();
   }
 
   @override
@@ -118,12 +158,16 @@ class _ReportScreenState extends State<ReportScreen> {
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 90),
                   children: [
                     _topHeader(),
+                    const SizedBox(height: 12),
+                    _dateSelector(),
                     const SizedBox(height: 16),
                     _summaryCard(totalCalories, goal),
                     const SizedBox(height: 16),
                     _chartCard(),
                     const SizedBox(height: 16),
                     _macroReport(protein: totalProtein, carbs: totalCarbs, fat: totalFat),
+                    const SizedBox(height: 16),
+                    _mealDetailReport(),
                     const SizedBox(height: 16),
                     _extraStats(),
                   ],
@@ -142,7 +186,7 @@ class _ReportScreenState extends State<ReportScreen> {
             children: [
               Text('Báo cáo', style: TextStyle(color: AppColors.textDark, fontSize: 26, fontWeight: FontWeight.w800)),
               SizedBox(height: 4),
-              Text('Dữ liệu cập nhật sau khi thêm bữa ăn', style: TextStyle(color: AppColors.textGrey, fontSize: 13)),
+              Text('Dữ liệu theo ngày đã chọn', style: TextStyle(color: AppColors.textGrey, fontSize: 13)),
             ],
           ),
         ),
@@ -154,6 +198,38 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  Widget _dateSelector() {
+    final text = ApiService.formatDateLocal(_selectedDate);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => _shiftDay(-1),
+            icon: const Icon(Icons.chevron_left, color: AppColors.primary),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: _pickDate,
+              child: Column(
+                children: [
+                  const Text('Ngày báo cáo', style: TextStyle(color: AppColors.textGrey, fontSize: 12)),
+                  const SizedBox(height: 3),
+                  Text(text, style: const TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w800, fontSize: 16)),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () => _shiftDay(1),
+            icon: const Icon(Icons.chevron_right, color: AppColors.primary),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _summaryCard(num calories, num goal) {
     final percent = goal == 0 ? 0.0 : (calories / goal).clamp(0.0, 1.0).toDouble();
     return Container(
@@ -162,7 +238,7 @@ class _ReportScreenState extends State<ReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Tổng calo hôm nay', style: TextStyle(color: AppColors.textGrey)),
+          const Text('Tổng calo ngày đã chọn', style: TextStyle(color: AppColors.textGrey)),
           const SizedBox(height: 8),
           Text('${calories.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.textDark, fontSize: 32, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
@@ -193,7 +269,7 @@ class _ReportScreenState extends State<ReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Calo 7 ngày', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w700)),
+          const Text('Calo 7 ngày gần nhất', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w700)),
           const SizedBox(height: 18),
           if (days.isEmpty)
             const Padding(
@@ -237,11 +313,70 @@ class _ReportScreenState extends State<ReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Macro hôm nay', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w700)),
+          const Text('Macro ngày đã chọn', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w700)),
           const SizedBox(height: 14),
-          _statRow('Protein', '${protein.toStringAsFixed(0)}g', AppColors.primary),
-          _statRow('Carbs', '${carbs.toStringAsFixed(0)}g', AppColors.protein),
-          _statRow('Fat', '${fat.toStringAsFixed(0)}g', AppColors.warning),
+          _statRow('Protein', '${protein.toStringAsFixed(0)}g', AppColors.protein),
+          _statRow('Carbs', '${carbs.toStringAsFixed(0)}g', AppColors.carbs),
+          _statRow('Fat', '${fat.toStringAsFixed(0)}g', AppColors.fat),
+        ],
+      ),
+    );
+  }
+
+  Widget _mealDetailReport() {
+    final meals = _dailyMeals();
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Chi tiết bữa ăn', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          if (meals.isEmpty)
+            const Text('Chưa có bữa ăn trong ngày này.', style: TextStyle(color: AppColors.textGrey))
+          else
+            ...meals.map((meal) {
+              final map = Map<String, dynamic>.from(meal as Map);
+              final type = _mealLabel('${map['meal_type'] ?? ''}');
+              final kcal = _num(map['total_calories']);
+              final items = map['items'] is List ? map['items'] as List : <dynamic>[];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(16)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$type · ${kcal.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    if (items.isEmpty)
+                      const Text('Không có chi tiết món.', style: TextStyle(color: AppColors.textGrey, fontSize: 13))
+                    else
+                      ...items.map((raw) {
+                        final item = Map<String, dynamic>.from(raw as Map);
+                        final name = '${item['food_name'] ?? item['name'] ?? item['custom_food_name'] ?? 'Món ăn'}';
+                        final amount = _num(item['amount'] ?? item['quantity']);
+                        final unit = '${item['amount_unit'] ?? item['unit'] ?? ''}';
+                        final itemKcal = _num(item['total_calories'] ?? item['calories']);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.restaurant, color: AppColors.primary, size: 16),
+                              const SizedBox(width: 7),
+                              Expanded(child: Text('$name · ${amount.toStringAsFixed(amount % 1 == 0 ? 0 : 1)}$unit', style: const TextStyle(fontSize: 13, color: AppColors.textDark))),
+                              Text('${itemKcal.toStringAsFixed(0)} kcal', style: const TextStyle(fontSize: 12, color: AppColors.textGrey)),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -281,6 +416,21 @@ class _ReportScreenState extends State<ReportScreen> {
         ],
       ),
     );
+  }
+
+  String _mealLabel(String type) {
+    switch (type) {
+      case 'breakfast':
+        return 'Sáng';
+      case 'lunch':
+        return 'Trưa';
+      case 'dinner':
+        return 'Tối';
+      case 'snack':
+        return 'Snack';
+      default:
+        return type.isEmpty ? 'Bữa ăn' : type;
+    }
   }
 
   BoxDecoration _cardDecoration() {
