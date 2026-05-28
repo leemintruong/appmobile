@@ -75,7 +75,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Map<String, dynamic> _normalizeObject(dynamic data) => ApiService.normalizeObject(data);
+  Map<String, dynamic> _normalizeObject(dynamic data) =>
+      ApiService.normalizeObject(data);
 
   Future<void> _loadHomeData({bool silent = false}) async {
     if (!silent && mounted) setState(() => _isLoading = true);
@@ -96,49 +97,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không tải được dữ liệu: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không tải được dữ liệu: $e')));
     } finally {
       if (mounted && !silent) setState(() => _isLoading = false);
     }
   }
 
-  num _readNumber(List<String> keys, {num fallback = 0}) {
-    for (final key in keys) {
-      final v = _dailyReport[key];
-      if (v is num) return v;
-      if (v != null) {
-        final parsed = num.tryParse(v.toString());
-        if (parsed != null) return parsed;
-      }
+  num _parseNumber(dynamic value, {num fallback = 0}) {
+    if (value is num) return value;
+    if (value != null) {
+      final parsed = num.tryParse(value.toString());
+      if (parsed != null) return parsed;
     }
+    return fallback;
+  }
 
-    for (final nestedKey in ['nutrition', 'goal']) {
-      final nested = _dailyReport[nestedKey];
-      if (nested is Map<String, dynamic>) {
+  num _readNumber(List<String> keys, {num fallback = 0}) {
+    final sources = <dynamic>[
+      _dailyReport,
+      _dailyReport['nutrition'],
+      _dailyReport['goal'],
+      _dailyReport['data'],
+      _dailyReport['report'],
+      _profile,
+      _profile['profile'],
+      _profile['goal'],
+      _profile['data'],
+      _meals,
+    ];
+
+    for (final source in sources) {
+      if (source is Map) {
         for (final key in keys) {
-          final v = nested[key];
-          if (v is num) return v;
-          if (v != null) {
-            final parsed = num.tryParse(v.toString());
-            if (parsed != null) return parsed;
+          if (source.containsKey(key)) {
+            return _parseNumber(source[key], fallback: fallback);
           }
         }
       }
     }
 
-    final profileGoal = _profile;
-    for (final key in keys) {
-      final v = profileGoal[key];
-      if (v is num) return v;
-      if (v != null) {
-        final parsed = num.tryParse(v.toString());
-        if (parsed != null) return parsed;
-      }
-    }
-
     return fallback;
+  }
+
+  num _readPositiveNumber(List<String> keys, {required num fallback}) {
+    final value = _readNumber(keys, fallback: fallback);
+    if (value <= 0) return fallback;
+    return value;
   }
 
   String _readProfile(List<String> keys, {String fallback = ''}) {
@@ -175,24 +181,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: Colors.white,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
           : pages[_currentIndex],
       bottomNavigationBar: _bottomNav(),
     );
   }
 
   Widget _homePage() {
-    final goal = _readNumber(['daily_calorie_goal', 'calorie_goal'], fallback: 2000);
+    final goal = _readNumber([
+      'daily_calorie_goal',
+      'calorie_goal',
+    ], fallback: 2000);
     final used = _readNumber(['total_calories', 'calories'], fallback: 0);
     final remaining = goal - used;
 
-    final protein = _readNumber(['total_protein', 'protein'], fallback: 0);
-    final carbs = _readNumber(['total_carbs', 'carbs'], fallback: 0);
-    final fat = _readNumber(['total_fat', 'fat'], fallback: 0);
+    final protein = _readNumber([
+      'total_protein',
+      'protein',
+      'protein_total',
+      'totalProtein',
+    ], fallback: 0);
+    final carbs = _readNumber([
+      'total_carbs',
+      'carbs',
+      'carb',
+      'totalCarbs',
+    ], fallback: 0);
+    final fat = _readNumber(['total_fat', 'fat', 'totalFat'], fallback: 0);
 
-    final proteinGoal = _readNumber(['daily_protein_goal'], fallback: 100);
-    final carbsGoal = _readNumber(['daily_carbs_goal'], fallback: 250);
-    final fatGoal = _readNumber(['daily_fat_goal'], fallback: 60);
+    final proteinGoal = _readPositiveNumber([
+      'daily_protein_goal',
+      'protein_goal',
+      'target_protein',
+      'proteinGoal',
+    ], fallback: 100);
+    final carbsGoal = _readPositiveNumber([
+      'daily_carbs_goal',
+      'carbs_goal',
+      'target_carbs',
+      'carbsGoal',
+    ], fallback: 250);
+    final fatGoal = _readPositiveNumber([
+      'daily_fat_goal',
+      'fat_goal',
+      'target_fat',
+      'fatGoal',
+    ], fallback: 60);
     final water = _readNumber(['total_water_ml'], fallback: 0);
     final waterGoal = _readNumber(['daily_water_goal_ml'], fallback: 2000);
 
@@ -229,9 +265,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
                 ),
-                child: const Text('+ Thêm bữa ăn', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                child: const Text(
+                  '+ Thêm bữa ăn',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
               ),
             ),
           ],
@@ -258,7 +299,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               Icon(Icons.favorite, color: AppColors.primary, size: 18),
               SizedBox(width: 6),
-              Text('SứcKhỏe', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700)),
+              Text(
+                'SứcKhỏe',
+                style: TextStyle(
+                  color: AppColors.textDark,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
         ),
@@ -266,15 +313,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text('Chào, $name', style: const TextStyle(color: AppColors.textDark, fontSize: 14, fontWeight: FontWeight.w600)),
-            Text(dateText, style: const TextStyle(color: AppColors.textLight, fontSize: 13)),
+            Text(
+              'Chào, $name',
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              dateText,
+              style: const TextStyle(color: AppColors.textLight, fontSize: 13),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _calorieOverview({required num goal, required num used, required num remaining}) {
+  Widget _calorieOverview({
+    required num goal,
+    required num used,
+    required num remaining,
+  }) {
     final progress = goal == 0 ? 0.0 : (used / goal).clamp(0.0, 1.0).toDouble();
 
     return Container(
@@ -286,11 +347,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Calo còn lại', style: TextStyle(color: AppColors.textGrey, fontSize: 14)),
+                const Text(
+                  'Calo còn lại',
+                  style: TextStyle(color: AppColors.textGrey, fontSize: 14),
+                ),
                 const SizedBox(height: 8),
-                Text('${remaining.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.textDark, fontSize: 24, fontWeight: FontWeight.w700)),
+                Text(
+                  '${remaining.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text('Mục tiêu: ${goal.toStringAsFixed(0)} kcal · Đã dùng: ${used.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.textLight, fontSize: 12)),
+                Text(
+                  'Mục tiêu: ${goal.toStringAsFixed(0)} kcal · Đã dùng: ${used.toStringAsFixed(0)} kcal',
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 12,
+                  ),
+                ),
                 const SizedBox(height: 14),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -308,15 +385,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           Container(
             width: 76,
             height: 76,
-            decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(40)),
-            child: const Center(child: Icon(Icons.eco, color: AppColors.primary, size: 38)),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: const Center(
+              child: Icon(Icons.eco, color: AppColors.primary, size: 38),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _macroCard({required num protein, required num carbs, required num fat, required num proteinGoal, required num carbsGoal, required num fatGoal}) {
+  Widget _macroCard({
+    required num protein,
+    required num carbs,
+    required num fat,
+    required num proteinGoal,
+    required num carbsGoal,
+    required num fatGoal,
+  }) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: _cardDecoration(),
@@ -325,17 +414,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           Row(
             children: [
-              const Expanded(child: Text('Phân bổ macro', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600))),
+              const Expanded(
+                child: Text(
+                  'Phân bổ macro',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
               Container(
                 width: 46,
                 height: 46,
-                decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(24)),
-                child: const Center(child: Icon(Icons.show_chart, color: AppColors.primary)),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Center(
+                  child: Icon(Icons.show_chart, color: AppColors.primary),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          const Text('Protein · Carbs · Fat', style: TextStyle(color: AppColors.textGrey, fontSize: 13)),
+          Text(
+            'Đã nạp: ${protein.toStringAsFixed(0)}g protein · ${carbs.toStringAsFixed(0)}g carb · ${fat.toStringAsFixed(0)}g fat',
+            style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
+          ),
           const SizedBox(height: 20),
           _macroLine('Protein', protein, proteinGoal, AppColors.primary),
           const SizedBox(height: 16),
@@ -355,20 +461,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             Text(label, style: const TextStyle(color: AppColors.textGrey)),
             const Spacer(),
-            Text('${(percent * 100).toStringAsFixed(0)}% · ${value.toStringAsFixed(0)}g/${goal.toStringAsFixed(0)}g', style: const TextStyle(color: AppColors.textDark, fontSize: 13)),
+            Text(
+              '${(percent * 100).toStringAsFixed(0)}% · ${value.toStringAsFixed(0)}g/${goal.toStringAsFixed(0)}g',
+              style: const TextStyle(color: AppColors.textDark, fontSize: 13),
+            ),
           ],
         ),
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(value: percent, minHeight: 9, color: color, backgroundColor: AppColors.border),
+          child: LinearProgressIndicator(
+            value: percent,
+            minHeight: 9,
+            color: color,
+            backgroundColor: AppColors.border,
+          ),
         ),
       ],
     );
   }
 
   Widget _waterActivityCard({required num water, required num waterGoal}) {
-    final progress = waterGoal == 0 ? 0.0 : (water / waterGoal).clamp(0.0, 1.0).toDouble();
+    final progress = waterGoal == 0
+        ? 0.0
+        : (water / waterGoal).clamp(0.0, 1.0).toDouble();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: _cardDecoration(),
@@ -380,13 +496,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Nước uống hôm nay', style: TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w700)),
+                const Text(
+                  'Nước uống hôm nay',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text('${water.toStringAsFixed(0)} / ${waterGoal.toStringAsFixed(0)} ml', style: const TextStyle(color: AppColors.textGrey)),
+                Text(
+                  '${water.toStringAsFixed(0)} / ${waterGoal.toStringAsFixed(0)} ml',
+                  style: const TextStyle(color: AppColors.textGrey),
+                ),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(value: progress, minHeight: 8, color: AppColors.protein, backgroundColor: AppColors.border),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 8,
+                    color: AppColors.protein,
+                    backgroundColor: AppColors.border,
+                  ),
                 ),
               ],
             ),
@@ -408,9 +539,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
             child: Row(
               children: [
-                const Text('Nhật ký bữa ăn hôm nay', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600)),
+                const Text(
+                  'Nhật ký bữa ăn hôm nay',
+                  style: TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const Spacer(),
-                Text('${meals.length} bữa', style: const TextStyle(color: AppColors.textGrey, fontSize: 13)),
+                Text(
+                  '${meals.length} bữa',
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 13,
+                  ),
+                ),
               ],
             ),
           ),
@@ -419,11 +563,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
               child: Column(
                 children: [
-                  const Icon(Icons.no_food, color: AppColors.textLight, size: 34),
+                  const Icon(
+                    Icons.no_food,
+                    color: AppColors.textLight,
+                    size: 34,
+                  ),
                   const SizedBox(height: 8),
-                  const Text('Chưa có bữa ăn nào hôm nay', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700)),
+                  const Text(
+                    'Chưa có bữa ăn nào hôm nay',
+                    style: TextStyle(
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 5),
-                  const Text('Bấm “Thêm bữa ăn” để dữ liệu cập nhật ngay trên Home.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textGrey, fontSize: 13)),
+                  const Text(
+                    'Bấm “Thêm bữa ăn” để dữ liệu cập nhật ngay trên Home.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textGrey, fontSize: 13),
+                  ),
                 ],
               ),
             )
@@ -432,8 +590,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               final map = Map<String, dynamic>.from(m);
               final mealType = _mealLabel(map['meal_type']?.toString() ?? '');
               final kcal = map['total_calories'] ?? 0;
-              final itemCount = map['items'] is List ? (map['items'] as List).length : (map['item_count'] ?? 0);
-              return _mealRow(mealType, '${NumberFormatHelper.format(kcal)} kcal · $itemCount món', 'Đã ghi', true);
+              final itemCount = map['items'] is List
+                  ? (map['items'] as List).length
+                  : (map['item_count'] ?? 0);
+              return _mealRow(
+                mealType,
+                '${NumberFormatHelper.format(kcal)} kcal · $itemCount món',
+                'Đã ghi',
+                true,
+              );
             }),
         ],
       ),
@@ -444,24 +609,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
       padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: AppColors.textGrey, fontSize: 13)),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 13,
+                  ),
+                ),
               ],
             ),
           ),
           Column(
             children: [
-              Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? AppColors.primary : AppColors.textGrey, size: 18),
+              Icon(
+                done ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: done ? AppColors.primary : AppColors.textGrey,
+                size: 18,
+              ),
               const SizedBox(height: 6),
-              Text(status, style: TextStyle(color: done ? AppColors.primary : AppColors.warning, fontSize: 12)),
+              Text(
+                status,
+                style: TextStyle(
+                  color: done ? AppColors.primary : AppColors.warning,
+                  fontSize: 12,
+                ),
+              ),
             ],
           ),
         ],
@@ -473,7 +664,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
-      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 20, offset: const Offset(0, 8))],
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.035),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+      ],
     );
   }
 
@@ -495,7 +692,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _bottomNav() {
     return Container(
       height: 66,
-      decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppColors.border))),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
       child: Row(
         children: [
           _navItem(0, Icons.home, 'Trang chủ'),
@@ -516,9 +716,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: selected ? AppColors.primary : AppColors.textGrey, size: 23),
+            Icon(
+              icon,
+              color: selected ? AppColors.primary : AppColors.textGrey,
+              size: 23,
+            ),
             const SizedBox(height: 3),
-            Text(label, style: TextStyle(color: selected ? AppColors.primary : AppColors.textGrey, fontSize: 11)),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? AppColors.primary : AppColors.textGrey,
+                fontSize: 11,
+              ),
+            ),
           ],
         ),
       ),
