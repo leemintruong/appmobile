@@ -16,15 +16,27 @@ class _FoodListScreenState extends State<FoodListScreen> {
   List<dynamic> _foods = [];
   List<dynamic> _categories = [];
   int? _selectedCategoryId;
+  int _lastEventVersion = 0;
 
   @override
   void initState() {
     super.initState();
+    _lastEventVersion = AppEvents.dataVersion.value;
+    AppEvents.dataVersion.addListener(_handleDataChanged);
     _loadInitial();
+  }
+
+  void _handleDataChanged() {
+    if (!mounted) return;
+    if (_lastEventVersion != AppEvents.dataVersion.value) {
+      _lastEventVersion = AppEvents.dataVersion.value;
+      _loadFoods();
+    }
   }
 
   @override
   void dispose() {
+    AppEvents.dataVersion.removeListener(_handleDataChanged);
     _searchCtrl.dispose();
     super.dispose();
   }

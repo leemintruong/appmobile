@@ -8,6 +8,7 @@ import 'add_meal_screen.dart';
 import 'report_screen.dart';
 import 'profile_screen.dart';
 import 'food_list_screen.dart';
+import 'ai_scan_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -163,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _onNavTap(int index) {
     setState(() => _currentIndex = index);
-    if (index == 0 || index == 2 || index == 3) {
+    if (index == 0 || index == 3 || index == 4) {
       _loadHomeData(silent: true);
       AppEvents.notifyDataChanged();
     }
@@ -174,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final pages = [
       _homePage(),
       const FoodListScreen(),
+      const AiScanScreen(showBackButton: false),
       const ReportScreen(),
       ProfileScreen(profile: _profile),
     ];
@@ -586,165 +588,133 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             )
           else
-            ...meals.map((m) {
-              final map = Map<String, dynamic>.from(m as Map);
-              return _mealDetailTile(map);
-            }),
+            ...meals.map((m) => _mealDetailCard(Map<String, dynamic>.from(m as Map))),
         ],
       ),
     );
   }
 
-  List<dynamic> _itemsOfMeal(Map<String, dynamic> meal) {
-    final items = meal['items'];
-    if (items is List) return items;
-
-    final details = meal['details'];
-    if (details is List) return details;
-
-    final mealItems = meal['meal_items'];
-    if (mealItems is List) return mealItems;
-
-    return [];
-  }
-
-  String _itemName(Map<String, dynamic> item) {
-    return (item['food_name'] ??
-            item['name'] ??
-            item['custom_food_name'] ??
-            item['detected_food_name'] ??
-            'Món ăn')
-        .toString();
-  }
-
-  String _amountText(Map<String, dynamic> item) {
-    final amount = _parseNumber(item['amount'] ?? item['quantity']);
-    final unit = (item['amount_unit'] ?? item['unit'] ?? item['estimated_unit'] ?? '').toString();
-
-    if (amount <= 0) return unit.isEmpty ? '' : unit;
-    return '${amount.toStringAsFixed(amount % 1 == 0 ? 0 : 1)}$unit';
-  }
-
-  Widget _mealDetailTile(Map<String, dynamic> meal) {
-    final mealType = _mealLabel(meal['meal_type']?.toString() ?? '');
-    final kcal = _parseNumber(meal['total_calories']);
-    final protein = _parseNumber(meal['total_protein']);
-    final carbs = _parseNumber(meal['total_carbs']);
-    final fat = _parseNumber(meal['total_fat']);
-    final items = _itemsOfMeal(meal);
-    final itemCount = items.isNotEmpty ? items.length : _parseNumber(meal['item_count']);
+  Widget _mealDetailCard(Map<String, dynamic> map) {
+    final mealType = _mealLabel(map['meal_type']?.toString() ?? '');
+    final kcal = map['total_calories'] ?? 0;
+    final protein = map['total_protein'] ?? 0;
+    final carbs = map['total_carbs'] ?? 0;
+    final fat = map['total_fat'] ?? 0;
+    final items = map['items'] is List ? map['items'] as List : <dynamic>[];
 
     return Container(
+      margin: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.check_circle, color: AppColors.primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  mealType,
+                  style: const TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Text(
+                '${NumberFormatHelper.format(kcal)} kcal',
+                style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'P ${NumberFormatHelper.format(protein)}g · C ${NumberFormatHelper.format(carbs)}g · F ${NumberFormatHelper.format(fat)}g',
+            style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
+          ),
+          if (items.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ...items.map((item) {
+              final it = Map<String, dynamic>.from(item as Map);
+              final name = it['food_name'] ?? it['custom_food_name'] ?? 'Món ăn';
+              final amount = NumberFormatHelper.format(it['amount']);
+              final unit = it['amount_unit'] ?? '';
+              final itemKcal = NumberFormatHelper.format(it['total_calories'] ?? it['calories']);
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.restaurant_menu, size: 14, color: AppColors.textLight),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '$name · $amount$unit',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
+                      ),
+                    ),
+                    Text(
+                      '$itemKcal kcal',
+                      style: const TextStyle(color: AppColors.textDark, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _mealRow(String title, String subtitle, String status, bool done) {
+    return Container(
       margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: true,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          leading: const Icon(Icons.check_circle, color: AppColors.primary, size: 22),
-          title: Text(
-            mealType,
-            style: const TextStyle(
-              color: AppColors.textDark,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          subtitle: Text(
-            '${NumberFormatHelper.format(kcal)} kcal · ${NumberFormatHelper.format(itemCount)} món',
-            style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
-          ),
-          trailing: const Icon(Icons.expand_more, color: AppColors.textGrey),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      _miniMacro('P', protein, AppColors.protein),
-                      _miniMacro('C', carbs, AppColors.carbs),
-                      _miniMacro('F', fat, AppColors.fat),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  if (items.isEmpty)
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Bữa này chưa có chi tiết món.',
-                        style: TextStyle(color: AppColors.textGrey, fontSize: 13),
-                      ),
-                    )
-                  else
-                    ...items.map((raw) {
-                      final item = Map<String, dynamic>.from(raw as Map);
-                      return _mealItemRow(item);
-                    }),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _miniMacro(String label, num value, Color color) {
-    return Expanded(
       child: Row(
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 5),
-          Text('$label ${value.toStringAsFixed(0)}g', style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
-  Widget _mealItemRow(Map<String, dynamic> item) {
-    final name = _itemName(item);
-    final amount = _amountText(item);
-    final kcal = _parseNumber(item['total_calories'] ?? item['estimated_calories'] ?? item['calories']);
-    final source = (item['source'] ?? '').toString();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            source == 'ai' ? Icons.auto_awesome : Icons.restaurant,
-            color: source == 'ai' ? AppColors.warning : AppColors.primary,
-            size: 18,
-          ),
-          const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              amount.isEmpty ? name : '$name · $amount',
-              style: const TextStyle(
-                color: AppColors.textDark,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textGrey,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ),
           ),
-          Text(
-            '${kcal.toStringAsFixed(0)} kcal',
-            style: const TextStyle(
-              color: AppColors.textGrey,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+          Column(
+            children: [
+              Icon(
+                done ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: done ? AppColors.primary : AppColors.textGrey,
+                size: 18,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                status,
+                style: TextStyle(
+                  color: done ? AppColors.primary : AppColors.warning,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -791,8 +761,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           _navItem(0, Icons.home, 'Trang chủ'),
           _navItem(1, Icons.restaurant, 'Thực phẩm'),
-          _navItem(2, Icons.show_chart, 'Báo cáo'),
-          _navItem(3, Icons.person, 'Hồ sơ'),
+          _navItem(2, Icons.camera_alt_rounded, 'AI Scan'),
+          _navItem(3, Icons.show_chart, 'Báo cáo'),
+          _navItem(4, Icons.person, 'Hồ sơ'),
         ],
       ),
     );
