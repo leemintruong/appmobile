@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/app_events.dart';
+import '../theme/app_colors.dart';
+import '../widgets/sk_ui.dart';
 
 class AddMealScreen extends StatefulWidget {
   const AddMealScreen({super.key});
@@ -11,173 +12,96 @@ class AddMealScreen extends StatefulWidget {
 }
 
 class _AddMealScreenState extends State<AddMealScreen> {
+  final _searchCtrl = TextEditingController();
+  final Map<int, Map<String, dynamic>> _selected = {};
+  final Map<int, TextEditingController> _amountCtrls = {};
   String _mealType = 'breakfast';
-  final TextEditingController _searchCtrl = TextEditingController();
-
-  List<dynamic> _foods = [];
-  final List<Map<String, dynamic>> _selectedItems = [];
-
-  bool _loading = true;
+  bool _loading = false;
   bool _saving = false;
+  List<dynamic> _foods = [];
 
   @override
   void initState() {
     super.initState();
-    _searchFoods('');
+    _loadFoods();
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    for (final c in _amountCtrls.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  num _num(dynamic v, {num fallback = 0}) {
-    if (v is num) return v;
-    if (v != null) return num.tryParse(v.toString()) ?? fallback;
-    return fallback;
-  }
-
-  String _str(dynamic v, {String fallback = ''}) {
-    if (v == null) return fallback;
-    final s = v.toString();
-    return s.isEmpty ? fallback : s;
-  }
-
-  num _baseAmount(Map<String, dynamic> food) {
-    final base = _num(food['base_amount'], fallback: 0);
-    if (base > 0) return base;
-    final serving = _num(food['serving_size'], fallback: 0);
-    return serving > 0 ? serving : 100;
-  }
-
-  String _baseUnit(Map<String, dynamic> food) {
-    return _str(food['base_unit'], fallback: _str(food['serving_unit'], fallback: 'g'));
-  }
-
-  num _defaultAmount(Map<String, dynamic> food) {
-    final serving = _num(food['serving_size'], fallback: 0);
-    if (serving > 0) return serving;
-    return _baseAmount(food);
-  }
-
-  num _calcTotal(Map<String, dynamic> item, String key) {
-    final nutrient = _num(item[key]);
-    final amount = _num(item['amount']);
-    final baseAmount = _num(item['base_amount'], fallback: 100);
-    if (baseAmount <= 0) return 0;
-    return nutrient * amount / baseAmount;
-  }
-
-  Future<void> _searchFoods(String keyword) async {
+  Future<void> _loadFoods() async {
     setState(() => _loading = true);
-
     try {
-      final results = await ApiService.searchFoods(search: keyword.trim(), limit: 80);
+      final foods = await ApiService.searchFoods(search: _searchCtrl.text.trim(), limit: 80);
       if (!mounted) return;
-      setState(() {
-        _foods = results;
-        _loading = false;
-      });
+      setState(() => _foods = foods);
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _foods = [];
-        _loading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không tải được thực phẩm: $e')),
-      );
+      if (mounted) _toast('Không tải được món: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _addFood(Map<String, dynamic> food) {
-    final foodId = food['id'];
-    final existingIndex = _selectedItems.indexWhere((item) => item['food_id'] == foodId);
-    final addAmount = _defaultAmount(food);
-
+  void _toggle(Map<String, dynamic> food) {
+    final id = int.tryParse('${food['id']}');
+    if (id == null) return;
     setState(() {
-      if (existingIndex >= 0) {
-        final oldAmount = _num(_selectedItems[existingIndex]['amount']);
-        _selectedItems[existingIndex]['amount'] = oldAmount + addAmount;
+      if (_selected.containsKey(id)) {
+        _selected.remove(id);
+        _amountCtrls.remove(id)?.dispose();
       } else {
-        _selectedItems.add({
-          'food_id': foodId,
-          'food_name': food['name'],
-          'amount': addAmount,
-          'amount_unit': _baseUnit(food),
-          'calories': food['calories'] ?? 0,
-          'protein': food['protein'] ?? 0,
-          'carbs': food['carbs'] ?? 0,
-          'fat': food['fat'] ?? 0,
-          'base_amount': _baseAmount(food),
-          'base_unit': _baseUnit(food),
-        });
+        _selected[id] = food;
+        _amountCtrls[id] = TextEditingController(text: '${NumFmt.read(food['serving_size'], fallback: NumFmt.read(food['base_amount'], fallback: 100)).toStringAsFixed(0)}');
       }
     });
   }
 
-  void _removeFood(Map<String, dynamic> item) {
-    setState(() => _selectedItems.remove(item));
-  }
-
-  void _changeAmount(Map<String, dynamic> item, num delta) {
-    setState(() {
-      final current = _num(item['amount']);
-      final next = current + delta;
-      item['amount'] = next <= 0 ? current : next;
+  num _totalCalories() {
+    num total = 0;
+    _selected.forEach((id, food) {
+      final amount = NumFmt.read(_amountCtrls[id]?.text, fallback: 0);
+      final base = NumFmt.read(food['base_amount'], fallback: 100);
+      total += NumFmt.read(food['calories']) * amount / (base <= 0 ? 100 : base);
     });
+    return total;
   }
 
-  Future<void> _saveMeal() async {
-    if (_selectedItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng chọn ít nhất một món')),
-      );
+  Future<void> _save() async {
+    if (_selected.isEmpty) {
+      _toast('Chọn ít nhất một món ăn');
       return;
     }
-
     setState(() => _saving = true);
-
     try {
-      final items = _selectedItems.map((item) {
-        return {
-          'food_id': item['food_id'],
-          'amount': _num(item['amount']).toDouble(),
-          'amount_unit': item['amount_unit'],
-        };
-      }).toList();
-
-      final result = await ApiService.addMeal(
-        mealType: _mealType,
-        items: items,
-      );
-
+      final items = <Map<String, dynamic>>[];
+      _selected.forEach((id, food) {
+        final amount = NumFmt.read(_amountCtrls[id]?.text, fallback: 0);
+        if (amount > 0) {
+          items.add({'food_id': id, 'amount': amount, 'amount_unit': food['base_unit'] ?? 'g'});
+        }
+      });
+      final result = await ApiService.addMeal(mealType: _mealType, items: items, date: ApiService.localDateKey());
       if (!mounted) return;
-
-      if (result['success'] == false) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Không lưu được bữa ăn')),
-        );
-        return;
+      if (result['success'] == true) {
+        AppEvents.notifyDataChanged();
+        Navigator.pop(context, true);
+      } else {
+        _toast(result['message'] ?? 'Không lưu được bữa ăn');
       }
-
-      AppEvents.notifyDataChanged();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã lưu bữa ăn và cập nhật trang chủ')),
-      );
-      Navigator.pop(context, true);
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+      if (mounted) _toast('Lỗi lưu bữa ăn: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  num get _totalCalories {
-    return _selectedItems.fold<num>(0, (sum, item) => sum + _calcTotal(item, 'calories'));
-  }
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   @override
   Widget build(BuildContext context) {
@@ -186,288 +110,118 @@ class _AddMealScreenState extends State<AddMealScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _topHeader(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 90),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _mealTypeCard(),
-                    const SizedBox(height: 16),
-                    _searchCard(),
-                    const SizedBox(height: 16),
-                    _foodListCard(),
-                    const SizedBox(height: 16),
-                    _selectedCard(),
-                    const SizedBox(height: 16),
-                    _saveButton(),
-                  ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(children: [
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_rounded)),
+                const Expanded(child: Text('Thêm bữa ăn', style: TextStyle(color: AppColors.textDark, fontSize: 24, fontWeight: FontWeight.w900))),
+                Text('${_totalCalories().toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900)),
+              ]),
+            ),
+            _mealTypeBar(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+              child: TextField(
+                controller: _searchCtrl,
+                onSubmitted: (_) => _loadFoods(),
+                decoration: InputDecoration(
+                  hintText: 'Tìm món ăn',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: IconButton(onPressed: _loadFoods, icon: const Icon(Icons.arrow_forward_rounded)),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
                 ),
               ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+                      itemCount: _foods.length,
+                      itemBuilder: (_, i) => _foodRow(Map<String, dynamic>.from(_foods[i] as Map), i),
+                    ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _topHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border),
-              ),
-              child: const Icon(Icons.arrow_back, size: 21, color: AppColors.textDark),
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Thêm bữa ăn',
-              style: TextStyle(color: AppColors.textDark, fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-          ),
-          Container(
-            width: 38,
-            height: 38,
-            decoration: const BoxDecoration(color: AppColors.primarySoft, shape: BoxShape.circle),
-            child: const Icon(Icons.restaurant, color: AppColors.primary, size: 21),
-          ),
-        ],
+      bottomSheet: Container(
+        color: AppColors.background,
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 22),
+        child: SkPrimaryButton(label: 'Lưu bữa ăn', icon: Icons.save_rounded, onPressed: _save, loading: _saving),
       ),
     );
   }
 
-  Widget _mealTypeCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Loại bữa ăn', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _mealTypePill('breakfast', 'Sáng'),
-              const SizedBox(width: 8),
-              _mealTypePill('lunch', 'Trưa'),
-              const SizedBox(width: 8),
-              _mealTypePill('dinner', 'Tối'),
-              const SizedBox(width: 8),
-              _mealTypePill('snack', 'Snack'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _mealTypePill(String value, String label) {
-    final selected = _mealType == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _mealType = value),
-        child: Container(
-          height: 42,
-          decoration: BoxDecoration(
-            color: selected ? AppColors.primary : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: selected ? AppColors.primary : AppColors.border),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(color: selected ? Colors.white : AppColors.textGrey, fontSize: 13, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _searchCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Tìm thực phẩm', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _searchCtrl,
-            onSubmitted: _searchFoods,
-            decoration: InputDecoration(
-              hintText: 'Nhập tên món: cơm, gà, trứng...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () => _searchFoods(_searchCtrl.text),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: AppColors.border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: AppColors.border)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _foodListCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Danh sách thực phẩm', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          if (_loading)
-            const Center(child: Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator(color: AppColors.primary)))
-          else if (_foods.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(14),
-              child: Text('Chưa có thực phẩm phù hợp', style: TextStyle(color: AppColors.textGrey)),
-            )
-          else
-            ..._foods.take(10).map((food) => _foodRow(Map<String, dynamic>.from(food))),
-        ],
-      ),
-    );
-  }
-
-  Widget _foodRow(Map<String, dynamic> food) {
-    final name = _str(food['name'], fallback: 'Món ăn');
-    final kcal = _num(food['calories']);
-    final baseAmount = _baseAmount(food);
-    final baseUnit = _baseUnit(food);
-    final source = _str(food['source_name']);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.border)),
-      child: Row(
-        children: [
-          const CircleAvatar(
-            radius: 20,
-            backgroundColor: AppColors.primarySoft,
-            child: Icon(Icons.restaurant_menu, color: AppColors.primary, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text('${kcal.toStringAsFixed(0)} kcal / ${baseAmount.toStringAsFixed(0)}$baseUnit', style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
-                if (source.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(source, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.primaryDark, fontSize: 11)),
-                ],
-              ],
-            ),
-          ),
-          IconButton(onPressed: () => _addFood(food), icon: const Icon(Icons.add_circle, color: AppColors.primary)),
-        ],
-      ),
-    );
-  }
-
-  Widget _selectedCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(child: Text('Món đã chọn', style: TextStyle(color: AppColors.textDark, fontSize: 17, fontWeight: FontWeight.w600))),
-              Text('${_totalCalories.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.primary, fontSize: 15, fontWeight: FontWeight.w800)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_selectedItems.isEmpty)
-            const Padding(padding: EdgeInsets.all(14), child: Text('Chưa chọn món nào', style: TextStyle(color: AppColors.textGrey)))
-          else
-            ..._selectedItems.map((item) => _selectedRow(item)),
-        ],
-      ),
-    );
-  }
-
-  Widget _selectedRow(Map<String, dynamic> item) {
-    final name = _str(item['food_name'], fallback: 'Món ăn');
-    final amount = _num(item['amount']);
-    final unit = _str(item['amount_unit'], fallback: 'g');
-    final total = _calcTotal(item, 'calories');
-    final step = _num(item['base_amount'], fallback: 100);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
-      decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(18)),
-      child: Row(
-        children: [
-          const Icon(Icons.check_circle, color: AppColors.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 5),
-                Text('${amount.toStringAsFixed(0)}$unit · ${total.toStringAsFixed(0)} kcal', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12)),
-              ],
-            ),
-          ),
-          IconButton(onPressed: () => _changeAmount(item, -step), icon: const Icon(Icons.remove_circle_outline, color: AppColors.textGrey)),
-          IconButton(onPressed: () => _changeAmount(item, step), icon: const Icon(Icons.add_circle_outline, color: AppColors.primary)),
-          IconButton(onPressed: () => _removeFood(item), icon: const Icon(Icons.close, color: AppColors.textGrey)),
-        ],
-      ),
-    );
-  }
-
-  Widget _saveButton() {
+  Widget _mealTypeBar() {
+    final types = {'breakfast': 'Sáng', 'lunch': 'Trưa', 'dinner': 'Tối', 'snack': 'Bữa phụ'};
     return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: _saving ? null : _saveMeal,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        ),
-        child: _saving
-            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4))
-            : const Text('Lưu bữa ăn', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+      height: 46,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        scrollDirection: Axis.horizontal,
+        children: types.entries.map((e) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: SkChip(label: e.value, selected: _mealType == e.key, onTap: () => setState(() => _mealType = e.key)),
+        )).toList(),
       ),
     );
   }
 
-  BoxDecoration _cardDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(24),
-      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 20, offset: const Offset(0, 8))],
+  Widget _foodRow(Map<String, dynamic> food, int index) {
+    final id = int.tryParse('${food['id']}') ?? 0;
+    final selected = _selected.containsKey(id);
+    return SkFadeSlide(
+      delayMs: index * 14,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: SkCard(
+          padding: const EdgeInsets.all(14),
+          radius: 22,
+          onTap: () => _toggle(food),
+          child: Column(children: [
+            Row(children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(color: selected ? AppColors.primary : AppColors.primarySoft, borderRadius: BorderRadius.circular(16)),
+                child: Icon(selected ? Icons.check_rounded : Icons.restaurant_rounded, color: selected ? Colors.white : AppColors.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${food['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text('${NumFmt.whole(food['calories'])} kcal / ${NumFmt.whole(food['base_amount'])}${food['base_unit'] ?? 'g'}', style: const TextStyle(color: AppColors.textGrey, fontSize: 12)),
+              ])),
+              Text('${NumFmt.whole(food['protein'])}g P', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800)),
+            ]),
+            if (selected) ...[
+              const SizedBox(height: 12),
+              Row(children: [
+                const Text('Lượng ăn', style: TextStyle(color: AppColors.textGrey)),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 96,
+                  child: TextField(
+                    controller: _amountCtrls[id],
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white,
+                      suffixText: '${food['base_unit'] ?? 'g'}',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.border)),
+                    ),
+                  ),
+                ),
+              ]),
+            ],
+          ]),
+        ),
+      ),
     );
   }
 }

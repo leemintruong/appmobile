@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 import '../services/api_service.dart';
-import 'login_screen.dart';
+import '../theme/app_colors.dart';
+import '../widgets/sk_ui.dart';
 import 'home_screen.dart';
+import 'login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -11,40 +12,23 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnim;
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-
-    _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-    _controller.forward();
-
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..forward();
     _goNext();
   }
 
   Future<void> _goNext() async {
-    await Future.delayed(const Duration(seconds: 2));
-
+    await Future.delayed(const Duration(milliseconds: 1500));
     final token = await ApiService.getToken();
-
     if (!mounted) return;
-
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => token == null || token.isEmpty
-            ? const LoginScreen()
-            : const HomeScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => token == null || token.isEmpty ? const LoginScreen() : const HomeScreen()),
     );
   }
 
@@ -58,39 +42,28 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.primary,
-      body: FadeTransition(
-        opacity: _fadeAnim,
-        child: Center(
+      body: Center(
+        child: ScaleTransition(
+          scale: CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 100,
-                height: 100,
+                width: 112,
+                height: 112,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(32),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 28, offset: Offset(0, 16))],
                 ),
-                child: const Icon(
-                  Icons.restaurant_menu,
-                  size: 60,
-                  color: AppColors.primary,
-                ),
+                child: const Icon(Icons.favorite_rounded, color: AppColors.primary, size: 62),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Dinh Dưỡng Cá Nhân',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
+              const Text('SứcKhỏe', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
-              const Text(
-                'Theo dõi sức khỏe mỗi ngày',
-                style: TextStyle(fontSize: 14, color: Colors.white70),
-              ),
+              const Text('Theo dõi dinh dưỡng mỗi ngày', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 30),
+              const SkProgressBar(value: .72, color: Colors.white, height: 5),
             ],
           ),
         ),

@@ -66,26 +66,17 @@ class ApiService {
 
   static Map<String, dynamic> normalizeObject(dynamic data) {
     if (data is Map<String, dynamic>) {
-      // Không bóc nhầm `goal` / `nutrition` trong response report.
-      // Nếu bóc nhầm, Report sẽ mất total_calories, meals và hiển thị 0 kcal.
       if (data.containsKey('total_calories') ||
           data.containsKey('meals') ||
           data.containsKey('days') ||
           data.containsKey('nutrition') ||
-          data.containsKey('weekly') ||
           data.containsKey('selected_date') ||
           data.containsKey('date')) {
         return data;
       }
 
-      for (final key in [
-        'data',
-        'profile',
-        'user',
-      ]) {
-        if (data[key] is Map<String, dynamic>) {
-          return data[key] as Map<String, dynamic>;
-        }
+      for (final key in ['data', 'profile', 'user']) {
+        if (data[key] is Map<String, dynamic>) return data[key] as Map<String, dynamic>;
       }
       return data;
     }
@@ -298,7 +289,7 @@ class ApiService {
       'items': items,
       'replace': replace,
     };
-    if (date != null) body['date'] = date;
+    body['date'] = date ?? localDateKey();
 
     final res = await http.post(
       Uri.parse('$baseUrl/meals'),
@@ -491,7 +482,7 @@ class ApiService {
       Uri.parse('$baseUrl/ai/scan-meal'),
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
         'image_base64': base64Image,
@@ -507,6 +498,7 @@ class ApiService {
 
     return Map<String, dynamic>.from(data);
   }
+
   static Future<Map<String, dynamic>> addAiItemToFoodLibrary({
     required int scanResultId,
     required int itemId,
@@ -515,18 +507,15 @@ class ApiService {
       Uri.parse('$baseUrl/ai/scan-results/$scanResultId/items/$itemId/add-to-foods'),
       headers: await _headers(),
     );
-
     final primaryData = _decodeResponse(primary);
     if (primary.statusCode != 404) {
       return _asMap(primaryData, 'Không thêm được món AI vào thư viện');
     }
 
-    // Fallback nếu backend đang dùng route trong foods.js
     final fallback = await http.post(
       Uri.parse('$baseUrl/foods/from-ai-result-item/$itemId'),
       headers: await _headers(),
     );
-
     return _asMap(_decodeResponse(fallback), 'Không thêm được món AI vào thư viện');
   }
 
