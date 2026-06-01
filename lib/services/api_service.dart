@@ -65,16 +65,30 @@ class ApiService {
 
   static Map<String, dynamic> normalizeObject(dynamic data) {
     if (data is Map<String, dynamic>) {
+      // Important:
+      // Do NOT unwrap `goal`, `nutrition`, or `result` blindly here.
+      // Report responses contain top-level fields like total_calories, meals, days, goal.
+      // If we unwrap `goal`, the report screen loses calories/meals and shows 0 kcal.
+      if (data.containsKey('total_calories') ||
+          data.containsKey('meals') ||
+          data.containsKey('days') ||
+          data.containsKey('nutrition') ||
+          data.containsKey('weekly') ||
+          data.containsKey('selected_date') ||
+          data.containsKey('date')) {
+        return data;
+      }
+
       for (final key in [
         'data',
         'profile',
         'user',
-        'report',
-        'result',
-        'goal',
       ]) {
-        if (data[key] is Map<String, dynamic>) return data[key];
+        if (data[key] is Map<String, dynamic>) {
+          return data[key] as Map<String, dynamic>;
+        }
       }
+
       return data;
     }
     return {};
@@ -337,7 +351,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> getMonthlyReport({String? month}) async {
-    final m = month ?? DateTime.now().toIso8601String().substring(0, 7);
+    final m = month ?? localDateKey().substring(0, 7);
     final uri = Uri.parse(
       '$baseUrl/reports/monthly',
     ).replace(queryParameters: {'month': m});
@@ -495,26 +509,4 @@ class ApiService {
 
     return Map<String, dynamic>.from(data);
   }
-
-  static Future<Map<String, dynamic>> addAiItemToFoodLibrary({
-    required int scanResultId,
-    required int itemId,
-  }) async {
-    final primary = await http.post(
-      Uri.parse('$baseUrl/ai/scan-results/$scanResultId/items/$itemId/add-to-foods'),
-      headers: await _headers(),
-    );
-
-    final primaryData = _decodeResponse(primary);
-    if (primary.statusCode != 404) {
-      return _asMap(primaryData, 'Không thêm được món AI vào thư viện');
-    }
-
-    final fallback = await http.post(
-      Uri.parse('$baseUrl/foods/from-ai-result-item/$itemId'),
-      headers: await _headers(),
-    );
-    return _asMap(_decodeResponse(fallback), 'Không thêm được món AI vào thư viện');
-  }
-
 }

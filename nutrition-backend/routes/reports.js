@@ -2,96 +2,12 @@ const router = require('express').Router();
 const db = require('../config/db');
 const auth = require('../middleware/auth');
 
-function localDateKey(value = new Date()) {
-  const d = value instanceof Date ? value : new Date(value);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 function today() {
-  return localDateKey(new Date());
+  return new Date().toISOString().slice(0, 10);
 }
 
 function toNumber(v) {
   return Number(v || 0);
-}
-
-async function getDetailedMeals(userId, date) {
-  const [rows] = await db.query(
-    `SELECT
-        ml.id AS meal_log_id,
-        ml.meal_type,
-        ml.log_date,
-        mli.id AS item_id,
-        mli.food_id,
-        COALESCE(f.name, mli.custom_food_name) AS food_name,
-        mli.custom_food_name,
-        mli.amount,
-        mli.amount_unit,
-        mli.total_calories,
-        mli.total_protein,
-        mli.total_carbs,
-        mli.total_fat,
-        mli.source
-     FROM meal_logs ml
-     LEFT JOIN meal_log_items mli ON mli.meal_log_id = ml.id
-     LEFT JOIN foods f ON f.id = mli.food_id
-     WHERE ml.user_id = ?
-       AND ml.log_date = ?
-     ORDER BY FIELD(ml.meal_type, 'breakfast', 'lunch', 'dinner', 'snack'), ml.id, mli.id`,
-    [userId, date]
-  );
-
-  const grouped = {};
-
-  for (const r of rows) {
-    if (!grouped[r.meal_type]) {
-      grouped[r.meal_type] = {
-        meal_log_id: r.meal_log_id,
-        meal_type: r.meal_type,
-        log_date: r.log_date,
-        items: [],
-        total_calories: 0,
-        total_protein: 0,
-        total_carbs: 0,
-        total_fat: 0,
-      };
-    }
-
-    if (!r.item_id) continue;
-
-    const item = {
-      item_id: r.item_id,
-      food_id: r.food_id,
-      food_name: r.food_name,
-      custom_food_name: r.custom_food_name,
-      amount: Number(r.amount || 0),
-      amount_unit: r.amount_unit,
-      total_calories: Number(r.total_calories || 0),
-      total_protein: Number(r.total_protein || 0),
-      total_carbs: Number(r.total_carbs || 0),
-      total_fat: Number(r.total_fat || 0),
-      source: r.source,
-    };
-
-    grouped[r.meal_type].items.push(item);
-    grouped[r.meal_type].total_calories += item.total_calories;
-    grouped[r.meal_type].total_protein += item.total_protein;
-    grouped[r.meal_type].total_carbs += item.total_carbs;
-    grouped[r.meal_type].total_fat += item.total_fat;
-  }
-
-  return Object.values(grouped).map((meal) => ({
-    ...meal,
-    item_count: meal.items.length,
-    summary_text: meal.items.map((x) => x.food_name).filter(Boolean).join(', '),
-    total_calories: Number(meal.total_calories.toFixed(1)),
-    total_protein: Number(meal.total_protein.toFixed(1)),
-    total_carbs: Number(meal.total_carbs.toFixed(1)),
-    total_fat: Number(meal.total_fat.toFixed(1)),
-  }));
 }
 
 // GET /api/reports/daily?date=2026-05-10
@@ -105,7 +21,12 @@ router.get('/daily', auth, async (req, res) => {
       [uid, date]
     );
 
-    const meals = await getDetailedMeals(uid, date);
+    const [meals] = await db.query(
+      `SELECT * FROM v_meal_summary
+       WHERE user_id = ? AND log_date = ?
+       ORDER BY FIELD(meal_type, 'breakfast', 'lunch', 'dinner', 'snack')`,
+      [uid, date]
+    );
 
     const [[goal = {}]] = await db.query(
       `SELECT daily_calorie_goal, daily_protein_goal, daily_carbs_goal,
@@ -140,7 +61,6 @@ router.get('/daily', auth, async (req, res) => {
     return res.json({
       success: true,
       date,
-      selected_date: date,
       total_calories: toNumber(nutrition.total_calories),
       total_protein: toNumber(nutrition.total_protein),
       total_carbs: toNumber(nutrition.total_carbs),
@@ -169,7 +89,7 @@ router.get('/daily', auth, async (req, res) => {
 router.get('/weekly', auth, async (req, res) => {
   try {
     const end = req.query.end || today();
-    const start = req.query.start || localDateKey(new Date(Date.now() - 6 * 86400000));
+    const start = req.query.start || new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
 
     const [nutritionRows] = await db.query(
       `SELECT * FROM v_daily_nutrition
@@ -226,9 +146,9 @@ router.get('/weekly', auth, async (req, res) => {
 // GET /api/reports/monthly?month=2026-05
 router.get('/monthly', auth, async (req, res) => {
   try {
-    const month = req.query.month || today().slice(0, 7);
+    const month = req.query.month || new Date().toISOString().slice(0, 7);
     const start = `${month}-01`;
-    const end = localDateKey(new Date(new Date(start).getFullYear(), new Date(start).getMonth() + 1, 0));
+    const end = new Date(new Date(start).getFullYear(), new Date(start).getMonth() + 1, 0).toISOString().slice(0, 10);
 
     const [nutrition] = await db.query(
       `SELECT * FROM v_daily_nutrition
