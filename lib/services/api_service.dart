@@ -11,7 +11,6 @@ class ApiService {
     final day = d.day.toString().padLeft(2, '0');
     return '$y-$m-$day';
   }
-
   // Android Emulator: http://10.0.2.2:3000/api
   // Chrome/Windows Desktop: http://localhost:3000/api
   //static const String baseUrl = 'http://10.0.2.2:3000/api';
@@ -66,17 +65,15 @@ class ApiService {
 
   static Map<String, dynamic> normalizeObject(dynamic data) {
     if (data is Map<String, dynamic>) {
-      if (data.containsKey('total_calories') ||
-          data.containsKey('meals') ||
-          data.containsKey('days') ||
-          data.containsKey('nutrition') ||
-          data.containsKey('selected_date') ||
-          data.containsKey('date')) {
-        return data;
-      }
-
-      for (final key in ['data', 'profile', 'user']) {
-        if (data[key] is Map<String, dynamic>) return data[key] as Map<String, dynamic>;
+      for (final key in [
+        'data',
+        'profile',
+        'user',
+        'report',
+        'result',
+        'goal',
+      ]) {
+        if (data[key] is Map<String, dynamic>) return data[key];
       }
       return data;
     }
@@ -270,7 +267,7 @@ class ApiService {
 
   // MEALS
   static Future<Map<String, dynamic>> getMeals({String? date}) async {
-    final d = date ?? localDateKey();
+    final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
     final uri = Uri.parse(
       '$baseUrl/meals',
     ).replace(queryParameters: {'date': d});
@@ -289,7 +286,7 @@ class ApiService {
       'items': items,
       'replace': replace,
     };
-    body['date'] = date ?? localDateKey();
+    if (date != null) body['date'] = date;
 
     final res = await http.post(
       Uri.parse('$baseUrl/meals'),
@@ -317,7 +314,7 @@ class ApiService {
 
   // REPORTS
   static Future<Map<String, dynamic>> getDailyReport({String? date}) async {
-    final d = date ?? localDateKey();
+    final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
     final uri = Uri.parse(
       '$baseUrl/reports/daily',
     ).replace(queryParameters: {'date': d});
@@ -329,7 +326,12 @@ class ApiService {
     String? start,
     String? end,
   }) async {
-    final s = start ?? localDateKey(DateTime.now().subtract(const Duration(days: 6)));
+    final s =
+        start ??
+        DateTime.now()
+            .subtract(const Duration(days: 6))
+            .toIso8601String()
+            .substring(0, 10);
     final params = <String, String>{'start': s};
     if (end != null) params['end'] = end;
     final uri = Uri.parse(
@@ -340,7 +342,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> getMonthlyReport({String? month}) async {
-    final m = month ?? localDateKey().substring(0, 7);
+    final m = month ?? DateTime.now().toIso8601String().substring(0, 7);
     final uri = Uri.parse(
       '$baseUrl/reports/monthly',
     ).replace(queryParameters: {'month': m});
@@ -384,7 +386,7 @@ class ApiService {
 
   // WATER
   static Future<Map<String, dynamic>> getWater({String? date}) async {
-    final d = date ?? localDateKey();
+    final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
     final uri = Uri.parse(
       '$baseUrl/water',
     ).replace(queryParameters: {'date': d});
@@ -408,7 +410,7 @@ class ApiService {
 
   // ACTIVITIES
   static Future<Map<String, dynamic>> getActivities({String? date}) async {
-    final d = date ?? localDateKey();
+    final d = date ?? DateTime.now().toIso8601String().substring(0, 10);
     final uri = Uri.parse(
       '$baseUrl/activities',
     ).replace(queryParameters: {'date': d});
@@ -482,7 +484,7 @@ class ApiService {
       Uri.parse('$baseUrl/ai/scan-meal'),
       headers: {
         'Content-Type': 'application/json',
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+        'Authorization': 'Bearer $token',
       },
       body: jsonEncode({
         'image_base64': base64Image,
@@ -499,24 +501,47 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
-  static Future<Map<String, dynamic>> addAiItemToFoodLibrary({
-    required int scanResultId,
-    required int itemId,
+  static Future<Map<String, dynamic>> askHealthAi({
+    required String message,
+    String? date,
   }) async {
-    final primary = await http.post(
-      Uri.parse('$baseUrl/ai/scan-results/$scanResultId/items/$itemId/add-to-foods'),
+    final res = await http.post(
+      Uri.parse('$baseUrl/ai-coach/chat'),
       headers: await _headers(),
+      body: jsonEncode({
+        'message': message,
+        'date': date ?? localDateKey(),
+      }),
     );
-    final primaryData = _decodeResponse(primary);
-    if (primary.statusCode != 404) {
-      return _asMap(primaryData, 'Không thêm được món AI vào thư viện');
-    }
 
-    final fallback = await http.post(
-      Uri.parse('$baseUrl/foods/from-ai-result-item/$itemId'),
+    return _asMap(_decodeResponse(res), 'Không hỏi được AI Coach');
+  }
+
+  static Future<Map<String, dynamic>> suggestMealWithAi({
+    String mealType = 'snack',
+    String? note,
+    String? date,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$baseUrl/ai-coach/suggest-meal'),
+      headers: await _headers(),
+      body: jsonEncode({
+        'meal_type': mealType,
+        'note': note ?? '',
+        'date': date ?? localDateKey(),
+      }),
+    );
+
+    return _asMap(_decodeResponse(res), 'Không lấy được gợi ý bữa ăn');
+  }
+
+  static Future<List<dynamic>> getHealthAiHistory({int limit = 20}) async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/ai-coach/history?limit=$limit'),
       headers: await _headers(),
     );
-    return _asMap(_decodeResponse(fallback), 'Không thêm được món AI vào thư viện');
+
+    return normalizeList(_decodeResponse(res));
   }
 
 }

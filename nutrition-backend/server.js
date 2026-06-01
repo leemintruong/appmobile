@@ -18,6 +18,7 @@ app.use('/api/water', require('./routes/water'));
 app.use('/api/activities', require('./routes/activities'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/suggestions', require('./routes/suggestions'));
+app.use('/api/ai-coach', require('./routes/ai_coach'));
 
 // Health check
 app.get('/', (req, res) => res.json({ status: 'ok', message: 'Nutrition API running' }));
