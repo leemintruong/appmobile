@@ -11,6 +11,7 @@ class ApiService {
     final day = d.day.toString().padLeft(2, '0');
     return '$y-$m-$day';
   }
+
   // Android Emulator: http://10.0.2.2:3000/api
   // Chrome/Windows Desktop: http://localhost:3000/api
   //static const String baseUrl = 'http://10.0.2.2:3000/api';
@@ -65,10 +66,8 @@ class ApiService {
 
   static Map<String, dynamic> normalizeObject(dynamic data) {
     if (data is Map<String, dynamic>) {
-      // Important:
-      // Do NOT unwrap `goal`, `nutrition`, or `result` blindly here.
-      // Report responses contain top-level fields like total_calories, meals, days, goal.
-      // If we unwrap `goal`, the report screen loses calories/meals and shows 0 kcal.
+      // Không bóc nhầm `goal` / `nutrition` trong response report.
+      // Nếu bóc nhầm, Report sẽ mất total_calories, meals và hiển thị 0 kcal.
       if (data.containsKey('total_calories') ||
           data.containsKey('meals') ||
           data.containsKey('days') ||
@@ -88,7 +87,6 @@ class ApiService {
           return data[key] as Map<String, dynamic>;
         }
       }
-
       return data;
     }
     return {};
@@ -509,4 +507,27 @@ class ApiService {
 
     return Map<String, dynamic>.from(data);
   }
+  static Future<Map<String, dynamic>> addAiItemToFoodLibrary({
+    required int scanResultId,
+    required int itemId,
+  }) async {
+    final primary = await http.post(
+      Uri.parse('$baseUrl/ai/scan-results/$scanResultId/items/$itemId/add-to-foods'),
+      headers: await _headers(),
+    );
+
+    final primaryData = _decodeResponse(primary);
+    if (primary.statusCode != 404) {
+      return _asMap(primaryData, 'Không thêm được món AI vào thư viện');
+    }
+
+    // Fallback nếu backend đang dùng route trong foods.js
+    final fallback = await http.post(
+      Uri.parse('$baseUrl/foods/from-ai-result-item/$itemId'),
+      headers: await _headers(),
+    );
+
+    return _asMap(_decodeResponse(fallback), 'Không thêm được món AI vào thư viện');
+  }
+
 }
