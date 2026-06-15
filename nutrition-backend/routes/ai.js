@@ -25,6 +25,42 @@ function cleanJsonText(text) {
   return cleaned;
 }
 
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isGeminiBusyError(err) {
+  return (
+    err?.status === 503 ||
+    err?.message?.includes('503') ||
+    err?.message?.toLowerCase?.().includes('high demand') ||
+    err?.message?.toLowerCase?.().includes('unavailable') ||
+    err?.message?.toLowerCase?.().includes('overloaded')
+  );
+}
+
+async function callGeminiModel(ai, model, prompt, imageBase64, mimeType) {
+  const response = await ai.models.generateContent({
+    model,
+    contents: [
+      {
+        inlineData: {
+          mimeType,
+          data: imageBase64,
+        },
+      },
+      {
+        text: prompt,
+      },
+    ],
+  });
+
+  const text = response.text || '';
+  const jsonText = cleanJsonText(text);
+
+  return JSON.parse(jsonText);
+}
+
 async function analyzeFoodImageWithGemini(imageBase64, mimeType = 'image/jpeg') {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('Missing GEMINI_API_KEY');
@@ -71,25 +107,41 @@ Rules:
 - Lower confidence_score if image is unclear.
 `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: [
-      {
-        inlineData: {
-          mimeType,
-          data: imageBase64,
-        },
-      },
-      {
-        text: prompt,
-      },
-    ],
-  });
+  const models = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+  ];
 
-  const text = response.text || '';
-  const jsonText = cleanJsonText(text);
+  let lastError;
 
-  return JSON.parse(jsonText);
+  for (const model of models) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`Gemini scan try model=${model}, attempt=${attempt}`);
+
+        return await callGeminiModel(ai, model, prompt, imageBase64, mimeType);
+      } catch (err) {
+        lastError = err;
+
+        console.error(`Gemini scan failed model=${model}, attempt=${attempt}`, {
+          status: err?.status,
+          message: err?.message,
+        });
+
+        if (!isGeminiBusyError(err)) {
+          throw err;
+        }
+
+        await sleep(1200 * attempt);
+      }
+    }
+  }
+
+  const e = new Error(
+    'Gemini đang quá tải tạm thời. Vui lòng thử lại sau vài phút.'
+  );
+  e.status = lastError?.status || 503;
+  throw e;
 }
 
 async function findMatchedFoodId(conn, detectedName) {
